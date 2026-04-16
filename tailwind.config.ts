@@ -59,10 +59,15 @@ const config: Config = {
           from: { opacity: "0", transform: "translateY(8px)" },
           to: { opacity: "1", transform: "translateY(0)" },
         },
+        toastIn: {
+          from: { opacity: "0", transform: "translateX(100%)" },
+          to: { opacity: "1", transform: "translateX(0)" },
+        },
       },
       animation: {
         shake: "shake 300ms ease",
         "row-enter": "rowEnter 200ms ease",
+        "toast-in": "toastIn 200ms ease",
       },
     },
   },
