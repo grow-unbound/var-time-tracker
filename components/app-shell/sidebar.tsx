@@ -33,7 +33,7 @@ const navItems: NavItem[] = [
     ),
   },
   {
-    href: "/log",
+    href: "/log-time",
     label: "Log Time",
     icon: (
       <svg
