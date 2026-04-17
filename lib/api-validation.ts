@@ -12,6 +12,11 @@ export const projectIdQuerySchema = z.object({
   projectId: z.coerce.number().int().positive(),
 });
 
+/** When `projectId` is omitted, callers may list all batteries for active projects. */
+export const batteriesQuerySchema = z.object({
+  projectId: z.coerce.number().int().positive().optional(),
+});
+
 export const batteryIdQuerySchema = z.object({
   batteryId: z.coerce.number().int().positive(),
 });
@@ -42,6 +47,66 @@ export const postEntriesBodySchema = z.object({
   entryDate: dateYmdSchema,
   shiftId: z.number().int().positive(),
   entries: z.array(postEntryRowSchema).min(1),
+});
+
+export const entriesListSortFieldSchema = z.enum([
+  "date",
+  "employee",
+  "department",
+  "project",
+  "battery",
+  "lot",
+  "stage",
+  "activity",
+  "duration",
+]);
+
+const commaSeparatedPositiveIdsSchema = z
+  .string()
+  .optional()
+  .transform((s) => {
+    if (!s?.trim()) return undefined;
+    const ids = Array.from(
+      new Set(
+        s
+          .split(",")
+          .map((x) => Number(x.trim()))
+          .filter((n) => Number.isInteger(n) && n > 0),
+      ),
+    );
+    return ids.length > 0 ? ids.slice(0, 100) : undefined;
+  });
+
+/** Matches `TimeScope` in lib/dashboard-date-range.ts */
+export const entriesListTimeScopeSchema = z.enum([
+  "all",
+  "today",
+  "yesterday",
+  "week",
+  "month",
+  "year",
+]);
+
+export const entriesListQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  q: z
+    .string()
+    .max(200)
+    .optional()
+    .transform((s) => {
+      const t = s?.trim();
+      return t && t.length > 0 ? t : undefined;
+    }),
+  sortBy: entriesListSortFieldSchema.optional(),
+  sortDir: z.enum(["asc", "desc"]).default("desc"),
+  scope: z.preprocess(
+    (raw) => (raw === undefined || raw === "" ? "all" : raw),
+    entriesListTimeScopeSchema,
+  ),
+  depts: commaSeparatedPositiveIdsSchema,
+  projects: commaSeparatedPositiveIdsSchema,
+  batteries: commaSeparatedPositiveIdsSchema,
 });
 
 export function parseJsonBody<T>(

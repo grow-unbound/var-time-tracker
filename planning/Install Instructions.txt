@@ -1,0 +1,91 @@
+VAR ELECTROCHEM — LABOR TRACKER
+Setup & Launch Instructions
+================================
+
+FIRST TIME SETUP (do this once)
+---------------------------------
+
+Step 1: Install Node.js
+  - Open this link in Chrome: https://nodejs.org
+  - Click the big green "LTS" download button
+  - Run the installer, click Next on everything
+  - Restart your laptop after installation
+
+Step 2: Extract the app
+  - Right-click var-tracker.zip → Extract All
+  - Extract to C:\VARTracker\
+
+Step 3: Open Command Prompt
+  - Press Windows key, type: cmd
+  - Press Enter
+
+Step 4: Go to the app folder
+  - Type this and press Enter:
+    cd C:\VARTracker
+
+Step 5: Install the app (internet needed, only once)
+  - Type this and press Enter:
+    npm install
+  - Wait for it to finish (2-3 minutes)
+
+Step 6: Set up the database (only once)
+  - Type this and press Enter:
+    npx prisma migrate deploy
+  - Then type this and press Enter:
+    npx prisma db seed
+
+Step 7: Start the app
+  - Type this and press Enter:
+    npm start
+  - You will see: "Ready on http://localhost:3000"
+
+
+DATABASE VIEWER (for admin use)
+--------------------------------
+To view and edit data directly:
+
+Step 1: Open a NEW Command Prompt window (keep the app running)
+Step 2: cd C:\VARTracker
+Step 3: npx prisma studio
+Step 4: Open Chrome and go to: http://localhost:5555
+
+To stop: press Ctrl+C in that Command Prompt window
+
+
+DAILY USE (every morning)
+--------------------------
+
+Step 1: Open Command Prompt
+  - Press Windows key, type: cmd, press Enter
+
+Step 2: Type this and press Enter:
+    cd C:\VARTracker
+
+Step 3: Type this and press Enter:
+    npm start
+
+Step 4: Open Chrome and go to:
+    http://localhost:3000
+
+Step 5: Share this address with anyone on the same network:
+    http://[YOUR-COMPUTER-IP]:3000
+    (To find your IP: open cmd, type ipconfig, look for IPv4 Address)
+
+TO STOP THE APP
+---------------
+Go to the Command Prompt window and press Ctrl + C
+
+
+TROUBLESHOOTING
+---------------
+App not opening?
+  → Make sure you ran npm start and saw "Ready on http://localhost:3000"
+
+Others on network can't access?
+  → Check Windows Firewall — allow Node.js through
+
+Database error on first run?
+  → Run: npx prisma migrate deploy
+  Then try npm start again
+
+Need help? Call Phani: +91-9490744841
