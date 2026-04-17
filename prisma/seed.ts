@@ -262,6 +262,14 @@ async function main(): Promise<void> {
   await prisma.timeEntry.createMany({
     data: timeEntries,
   });
+
+  // Explicit IDs in createMany do not advance the SERIAL sequence; fix so new app inserts get unique entry_id.
+  await prisma.$executeRawUnsafe(`
+    SELECT setval(
+      pg_get_serial_sequence('public.time_entries', 'entry_id')::regclass,
+      COALESCE((SELECT MAX("entry_id") FROM "time_entries"), 1)
+    );
+  `);
 }
 
 main()
