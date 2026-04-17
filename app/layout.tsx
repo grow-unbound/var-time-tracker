@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 
 import { AppShell } from "@/components/app-shell/app-shell";
@@ -21,6 +21,18 @@ const jetBrainsMono = JetBrains_Mono({
 export const metadata: Metadata = {
   title: "VAR Electrochem Labor Tracker",
   description: "Labor time tracking platform for VAR Electrochem.",
+  icons: {
+    icon: [{ url: "/branding/var-logo.svg", type: "image/svg+xml" }],
+  },
+  appleWebApp: {
+    capable: true,
+    title: "VAR Labor",
+    statusBarStyle: "black-translucent",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#1d427d",
 };
 
 export default function RootLayout({

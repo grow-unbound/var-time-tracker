@@ -16,6 +16,8 @@ import {
   readReferenceCache,
   writeReferenceCache,
 } from "@/lib/reference-cache";
+import { SearchableSelect } from "@/components/ui/searchable-select";
+import { TimeEntryFormSkeleton } from "@/components/time-entry/time-entry-form-skeleton";
 
 interface EntryRowState {
   clientId: string;
@@ -29,10 +31,57 @@ interface EntryRowState {
   lots: LotDto[];
 }
 
-const DURATION_OPTIONS = Array.from(
-  { length: 32 },
-  (_, i) => String((i + 1) * 15),
-);
+function normalizeDurationMinutes(raw: number): number {
+  if (!Number.isFinite(raw) || raw <= 0) {
+    return 0;
+  }
+  const n = Math.round(raw / 15) * 15;
+  return Math.min(480, Math.max(15, n));
+}
+
+function snapDurationMinutes(raw: number): number {
+  if (!Number.isFinite(raw) || raw <= 0) {
+    return 0;
+  }
+  const capped = Math.min(480, raw);
+  const snapped = Math.round(capped / 15) * 15;
+  return Math.min(480, Math.max(15, snapped));
+}
+
+function splitDuration(totalStr: string): { hours: number; minutes: number } {
+  const parsed = Number.parseInt(totalStr, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return { hours: 0, minutes: 0 };
+  }
+  const t = normalizeDurationMinutes(parsed);
+  return { hours: Math.floor(t / 60), minutes: t % 60 };
+}
+
+function adjustDurationMinutes(current: string, deltaMinutes: number): string {
+  const t = Number.parseInt(current, 10);
+  const base = Number.isFinite(t) ? t : 0;
+  const next = Math.max(0, Math.min(480, base + deltaMinutes));
+  if (next <= 0) {
+    return "0";
+  }
+  return String(normalizeDurationMinutes(next));
+}
+
+function formatMinutesAsHours(minutes: number): string {
+  const m = Math.max(0, Math.round(minutes));
+  const h = Math.floor(m / 60);
+  const r = m % 60;
+  if (m === 0) {
+    return "0 min";
+  }
+  if (h === 0) {
+    return `${r} min`;
+  }
+  if (r === 0) {
+    return `${h} hr${h === 1 ? "" : "s"}`;
+  }
+  return `${h} hrs ${r} min`;
+}
 
 function todayLocalYmd(): string {
   const d = new Date();
@@ -50,14 +99,13 @@ function createEmptyRow(): EntryRowState {
     batteryId: "",
     stage: "RnD",
     lotId: "",
-    durationMinutes: "60",
+    durationMinutes: "0",
     batteries: [],
     lots: [],
   };
 }
 
 export function TimeEntryForm(): JSX.Element {
-  const activityRefs = useRef<Map<string, HTMLSelectElement>>(new Map());
   const submitRef = useRef<HTMLButtonElement>(null);
 
   const [departments, setDepartments] = useState<DepartmentDto[]>([]);
@@ -71,12 +119,13 @@ export function TimeEntryForm(): JSX.Element {
   const [dateStr, setDateStr] = useState(todayLocalYmd);
   const [shiftId, setShiftId] = useState<number | "">("");
   const [shiftLocked, setShiftLocked] = useState(false);
+  const [savedDayMinutes, setSavedDayMinutes] = useState(0);
 
   const [employees, setEmployees] = useState<EmployeeDto[]>([]);
   const [activities, setActivities] = useState<ActivityDto[]>([]);
   const [deptLoading, setDeptLoading] = useState(false);
 
-  const [rows, setRows] = useState<EntryRowState[]>([]);
+  const [rows, setRows] = useState<EntryRowState[]>(() => [createEmptyRow()]);
 
   const [toast, setToast] = useState<string | null>(null);
   const [submitShaking, setSubmitShaking] = useState(false);
@@ -138,6 +187,30 @@ export function TimeEntryForm(): JSX.Element {
     [employees, empId],
   );
 
+  const shiftNameForEmployee = useCallback(
+    (emp: EmployeeDto): string =>
+      shifts.find((s) => s.id === emp.shiftId)?.name ?? "—",
+    [shifts],
+  );
+
+  const fetchSavedDayMinutes = useCallback(async (): Promise<void> => {
+    if (!empId || !dateStr) {
+      setSavedDayMinutes(0);
+      return;
+    }
+    const params = new URLSearchParams({ empId, date: dateStr });
+    const res = await fetch(`/api/entries/day-total?${params}`);
+    if (!res.ok) {
+      return;
+    }
+    const data = (await res.json()) as { totalMinutes?: number };
+    setSavedDayMinutes(data.totalMinutes ?? 0);
+  }, [empId, dateStr]);
+
+  useEffect(() => {
+    void fetchSavedDayMinutes();
+  }, [fetchSavedDayMinutes]);
+
   const fetchShiftState = useCallback(async (): Promise<void> => {
     if (!empId || !dateStr) {
       setShiftLocked(false);
@@ -178,7 +251,7 @@ export function TimeEntryForm(): JSX.Element {
       setEmployees([]);
       setActivities([]);
       setEmpId("");
-      setRows([]);
+      setRows([createEmptyRow()]);
       return;
     }
     let cancelled = false;
@@ -200,7 +273,7 @@ export function TimeEntryForm(): JSX.Element {
         setEmployees(eJson.employees);
         setActivities(aJson.activities);
         setEmpId("");
-        setRows([]);
+        setRows([createEmptyRow()]);
       })
       .catch(() => {
         if (!cancelled) {
@@ -239,27 +312,41 @@ export function TimeEntryForm(): JSX.Element {
     [rows],
   );
 
-  const progressRatio = totalMinutes / 480;
+  const combinedDayMinutes = savedDayMinutes + totalMinutes;
+  const progressRatio = combinedDayMinutes / 480;
   const fillPercent = Math.min(100, progressRatio * 100);
-  let fillClass = "bg-primary";
-  if (progressRatio >= 1) {
-    fillClass = "bg-danger";
-  } else if (progressRatio > 0.75) {
-    fillClass = "bg-accent";
-  }
+  const overDailyCap = combinedDayMinutes > 480;
 
-  const remaining = Math.max(0, 480 - totalMinutes);
-  const remainingLabel =
-    totalMinutes >= 480
-      ? "0 min remaining — limit reached"
-      : `${remaining} min remaining`;
+  const departmentOptions = useMemo(
+    () =>
+      departments.map((d) => ({
+        value: String(d.id),
+        label: `${d.name}`,
+      })),
+    [departments],
+  );
+
+  const employeeOptions = useMemo(
+    () =>
+      employees.map((em) => ({
+        value: em.empId,
+        label: `${em.empCode} - ${em.firstName} ${em.lastName} (${shiftNameForEmployee(em)})`,
+      })),
+    [employees, shiftNameForEmployee],
+  );
+
+  const projectOptions = useMemo(
+    () =>
+      projects.map((p) => ({
+        value: String(p.id),
+        label: `${p.name}`,
+      })),
+    [projects],
+  );
 
   const addRow = (): void => {
     const row = createEmptyRow();
     setRows((prev) => [...prev, row]);
-    requestAnimationFrame(() => {
-      activityRefs.current.get(row.clientId)?.focus();
-    });
   };
 
   const updateRow = (
@@ -272,8 +359,46 @@ export function TimeEntryForm(): JSX.Element {
   };
 
   const removeRow = (clientId: string): void => {
-    setRows((prev) => prev.filter((r) => r.clientId !== clientId));
-    activityRefs.current.delete(clientId);
+    setRows((prev) => {
+      const next = prev.filter((r) => r.clientId !== clientId);
+      return next.length === 0 ? [createEmptyRow()] : next;
+    });
+  };
+
+  const setRowDurationTotal = (clientId: string, total: number): void => {
+    const t = Math.max(0, Math.min(480, total));
+    updateRow(clientId, { durationMinutes: t === 0 ? "0" : String(t) });
+  };
+
+  const onDurationHoursChange = (row: EntryRowState, raw: string): void => {
+    const h = Math.min(8, Math.max(0, Number.parseInt(raw, 10) || 0));
+    const base = Number.parseInt(row.durationMinutes, 10);
+    const current = Number.isFinite(base) ? base : 0;
+    const m = current % 60;
+    setRowDurationTotal(row.clientId, h * 60 + m);
+  };
+
+  const onDurationMinutesChange = (row: EntryRowState, raw: string): void => {
+    let mm = Number.parseInt(raw, 10);
+    if (!Number.isFinite(mm)) {
+      mm = 0;
+    }
+    mm = Math.min(59, Math.max(0, mm));
+    const base = Number.parseInt(row.durationMinutes, 10);
+    const current = Number.isFinite(base) ? base : 0;
+    const h = Math.floor(current / 60);
+    setRowDurationTotal(row.clientId, h * 60 + mm);
+  };
+
+  const onDurationFieldBlur = (row: EntryRowState): void => {
+    const parsed = Number.parseInt(row.durationMinutes, 10);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      updateRow(row.clientId, { durationMinutes: "0" });
+      return;
+    }
+    updateRow(row.clientId, {
+      durationMinutes: String(snapDurationMinutes(parsed)),
+    });
   };
 
   const onProjectChange = async (
@@ -339,11 +464,13 @@ export function TimeEntryForm(): JSX.Element {
 
   const validateRows = (): boolean => {
     for (const row of rows) {
+      const dur = Number.parseInt(row.durationMinutes, 10);
       if (
         !row.activityId ||
         !row.projectId ||
         !row.batteryId ||
-        !row.durationMinutes
+        !Number.isFinite(dur) ||
+        dur <= 0
       ) {
         setSubmitError("Complete every entry row before submitting.");
         return false;
@@ -363,7 +490,7 @@ export function TimeEntryForm(): JSX.Element {
       setSubmitError("Add at least one entry.");
       return;
     }
-    if (totalMinutes > 480) {
+    if (savedDayMinutes + totalMinutes > 480) {
       triggerShake();
       submitRef.current?.focus();
       return;
@@ -405,21 +532,17 @@ export function TimeEntryForm(): JSX.Element {
         submitRef.current?.focus();
         return;
       }
-      setRows([]);
+      setRows([createEmptyRow()]);
       setToast("Time entries saved.");
       window.setTimeout(() => setToast(null), 3000);
-      await fetchShiftState();
+      await Promise.all([fetchShiftState(), fetchSavedDayMinutes()]);
     } finally {
       setSubmitting(false);
     }
   };
 
   if (refLoading) {
-    return (
-      <section className="rounded-card border border-border bg-surface p-6 shadow-card">
-        <p className="text-sm text-text-secondary">Loading form…</p>
-      </section>
-    );
+    return <TimeEntryFormSkeleton />;
   }
 
   if (refError) {
@@ -454,45 +577,27 @@ export function TimeEntryForm(): JSX.Element {
           </h1>
 
           <div className="mt-6 grid gap-4 md:grid-cols-2">
-            <div className="flex flex-col gap-1.5">
-              <label className="text-sm text-text-primary" htmlFor="dept">
-                Department
-              </label>
-              <select
-                className="rounded-input border border-border bg-surface px-3 py-2 text-sm hover:border-[#9aaec1] focus-visible:border-primary"
-                id="dept"
-                value={deptId}
-                onChange={(e) => setDeptId(e.target.value)}
-                disabled={deptLoading}
-              >
-                <option value="">Select department</option>
-                {departments.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <SearchableSelect
+              id="dept"
+              label="Department"
+              placeholder="Search departments…"
+              options={departmentOptions}
+              value={deptId}
+              onValueChange={setDeptId}
+              disabled={deptLoading}
+              emptyLabel="No departments"
+            />
 
-            <div className="flex flex-col gap-1.5">
-              <label className="text-sm text-text-primary" htmlFor="emp">
-                Employee
-              </label>
-              <select
-                className="rounded-input border border-border bg-surface px-3 py-2 text-sm hover:border-[#9aaec1] focus-visible:border-primary"
-                id="emp"
-                value={empId}
-                onChange={(e) => setEmpId(e.target.value)}
-                disabled={!deptId || deptLoading}
-              >
-                <option value="">Select employee</option>
-                {employees.map((em) => (
-                  <option key={em.empId} value={em.empId}>
-                    {em.empId} — {em.firstName} {em.lastName}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <SearchableSelect
+              id="emp"
+              label="Employee"
+              placeholder="Search employees…"
+              options={employeeOptions}
+              value={empId}
+              onValueChange={setEmpId}
+              disabled={!deptId || deptLoading}
+              emptyLabel="No employees in this department"
+            />
 
             <div className="flex flex-col gap-1.5">
               <label className="text-sm text-text-primary" htmlFor="entry-date">
@@ -508,262 +613,322 @@ export function TimeEntryForm(): JSX.Element {
               />
             </div>
 
-            <div className="flex flex-col gap-1.5">
-              <label className="text-sm text-text-primary" htmlFor="shift">
-                Shift
-              </label>
-              <select
-                className="rounded-input border border-border bg-surface px-3 py-2 text-sm hover:border-[#9aaec1] focus-visible:border-primary"
-                id="shift"
-                value={shiftId === "" ? "" : String(shiftId)}
-                onChange={(e) =>
-                  setShiftId(e.target.value ? Number(e.target.value) : "")
-                }
-                disabled={!empId || shiftLocked}
+            <div className="flex flex-col gap-2">
+              <span className="text-sm text-text-primary">Time logged</span>
+              <div
+                className={`mt-1 h-2 w-full overflow-hidden rounded bg-border ${
+                  overDailyCap ? "ring-2 ring-danger ring-offset-2 ring-offset-surface" : ""
+                }`}
+                role="progressbar"
+                aria-valuenow={combinedDayMinutes}
+                aria-valuemin={0}
+                aria-valuemax={480}
+                aria-label="Time logged today: saved entries plus this form, out of 8 hours"
               >
-                <option value="">Select shift</option>
-                {shifts.map((s) => {
-                  const empShift = selectedEmployee?.shiftId;
-                  const optionLocked =
-                    !shiftLocked &&
-                    empShift !== undefined &&
-                    s.id !== empShift;
-                  return (
-                    <option key={s.id} value={s.id} disabled={optionLocked}>
-                      {s.name}
-                    </option>
-                  );
-                })}
-              </select>
+                <div
+                  className="flex h-full transition-[width] duration-300 ease-out"
+                  style={{
+                    width: `${fillPercent}%`,
+                  }}
+                >
+                  {combinedDayMinutes > 0 ? (
+                    <>
+                      {savedDayMinutes > 0 ? (
+                        <div
+                          className="h-full bg-primary"
+                          style={{
+                            width: `${(savedDayMinutes / combinedDayMinutes) * 100}%`,
+                          }}
+                          title="Previously saved today"
+                        />
+                      ) : null}
+                      {totalMinutes > 0 ? (
+                        <div
+                          className="h-full bg-accent"
+                          style={{
+                            width: `${(totalMinutes / combinedDayMinutes) * 100}%`,
+                          }}
+                          title="This form (not yet submitted)"
+                        />
+                      ) : null}
+                    </>
+                  ) : null}
+                </div>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                  <span className="font-mono text-sm text-text-primary">
+                    {formatMinutesAsHours(combinedDayMinutes)} / 8 hrs
+                  </span>
+                  {combinedDayMinutes > 0 ? (
+                    <span className="text-xs text-text-secondary">
+                      {savedDayMinutes > 0 ? (
+                        <span>
+                          <span className="font-medium text-primary">Saved</span>{" "}
+                          {formatMinutesAsHours(savedDayMinutes)}
+                        </span>
+                      ) : null}
+                      {savedDayMinutes > 0 && totalMinutes > 0 ? " · " : null}
+                    </span>
+                  ) : null}
+                </div>
+              </div>
             </div>
           </div>
         </header>
 
-        <button
-          className="rounded-input border border-border bg-transparent px-5 py-2 text-sm font-medium text-text-primary transition-colors hover:bg-appbg active:scale-[0.97] md:w-auto"
-          type="button"
-          onClick={addRow}
-        >
-          Add Entry
-        </button>
-
         <div className="space-y-4">
-          {rows.map((row) => (
-            <div
-              key={row.clientId}
-              className="animate-row-enter rounded-card border border-border bg-surface p-5 shadow-card"
-            >
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                <div className="flex flex-col gap-1.5">
-                  <label
-                    className="text-sm text-text-primary"
-                    htmlFor={`activity-${row.clientId}`}
-                  >
-                    Activity
-                  </label>
-                  <select
-                    ref={(el) => {
-                      if (el) {
-                        activityRefs.current.set(row.clientId, el);
-                      } else {
-                        activityRefs.current.delete(row.clientId);
-                      }
-                    }}
-                    className="rounded-input border border-border bg-surface px-3 py-2 text-sm hover:border-[#9aaec1] focus-visible:border-primary"
+          {rows.map((row) => {
+            const dh = splitDuration(row.durationMinutes);
+            const activityOptions = activities.map((a) => ({
+              value: String(a.id),
+              label: a.name,
+            }));
+            const batteryOptions = row.batteries.map((b) => ({
+              value: String(b.id),
+              label: b.modelName,
+            }));
+            const lotOptions =
+              row.stage === "Production"
+                ? row.lots.map((lot) => ({
+                    value: String(lot.id),
+                    label: lot.lotNumber,
+                  }))
+                : [];
+
+            return (
+              <div
+                key={row.clientId}
+                className="animate-row-enter rounded-card border border-border bg-surface p-5 shadow-card"
+              >
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                  <SearchableSelect
                     id={`activity-${row.clientId}`}
+                    label="Activity"
+                    placeholder="Search activities…"
+                    options={activityOptions}
                     value={row.activityId}
-                    onChange={(e) =>
-                      updateRow(row.clientId, { activityId: e.target.value })
+                    onValueChange={(v) =>
+                      updateRow(row.clientId, { activityId: v })
                     }
                     disabled={!deptId}
-                  >
-                    <option value="">Select activity</option>
-                    {activities.map((a) => (
-                      <option key={a.id} value={a.id}>
-                        {a.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                    emptyLabel="No activities"
+                  />
 
-                <div className="flex flex-col gap-1.5">
-                  <label
-                    className="text-sm text-text-primary"
-                    htmlFor={`project-${row.clientId}`}
-                  >
-                    Project
-                  </label>
-                  <select
-                    className="rounded-input border border-border bg-surface px-3 py-2 text-sm hover:border-[#9aaec1] focus-visible:border-primary"
+                  <SearchableSelect
                     id={`project-${row.clientId}`}
+                    label="Project"
+                    placeholder="Search projects…"
+                    options={projectOptions}
                     value={row.projectId}
-                    onChange={(e) => void onProjectChange(row, e.target.value)}
-                  >
-                    <option value="">Select project</option>
-                    {projects.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.projectCode} — {p.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                    onValueChange={(v) => void onProjectChange(row, v)}
+                    emptyLabel="No projects"
+                  />
 
-                <div className="flex flex-col gap-1.5">
-                  <label
-                    className="text-sm text-text-primary"
-                    htmlFor={`battery-${row.clientId}`}
-                  >
-                    Battery model
-                  </label>
-                  <select
-                    className="rounded-input border border-border bg-surface px-3 py-2 text-sm hover:border-[#9aaec1] focus-visible:border-primary"
+                  <SearchableSelect
                     id={`battery-${row.clientId}`}
+                    label="Battery model"
+                    placeholder="Search batteries…"
+                    options={batteryOptions}
                     value={row.batteryId}
-                    onChange={(e) => void onBatteryChange(row, e.target.value)}
+                    onValueChange={(v) => void onBatteryChange(row, v)}
                     disabled={!row.projectId}
-                  >
-                    <option value="">Select battery</option>
-                    {row.batteries.map((b) => (
-                      <option key={b.id} value={b.id}>
-                        {b.modelName}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                    emptyLabel={
+                      row.projectId ? "No batteries for project" : "Pick a project first"
+                    }
+                  />
 
-                <div className="flex flex-col gap-1.5">
-                  <label
-                    className="text-sm text-text-primary"
-                    htmlFor={`stage-${row.clientId}`}
-                  >
-                    Stage
-                  </label>
-                  <select
-                    className="rounded-input border border-border bg-surface px-3 py-2 text-sm hover:border-[#9aaec1] focus-visible:border-primary"
-                    id={`stage-${row.clientId}`}
-                    value={row.stage}
-                    onChange={(e) => {
-                      const next = e.target.value as "RnD" | "Production";
-                      updateRow(row.clientId, {
-                        stage: next,
-                        ...(next === "RnD"
-                          ? { lotId: "", lots: [] }
-                          : {}),
-                      });
-                    }}
-                  >
-                    <option value="RnD">R&amp;D</option>
-                    <option value="Production">Production</option>
-                  </select>
-                </div>
-
-                {row.stage === "Production" ? (
                   <div className="flex flex-col gap-1.5">
                     <label
                       className="text-sm text-text-primary"
-                      htmlFor={`lot-${row.clientId}`}
+                      htmlFor={`stage-${row.clientId}`}
                     >
-                      Lot
+                      Stage
                     </label>
                     <select
                       className="rounded-input border border-border bg-surface px-3 py-2 text-sm hover:border-[#9aaec1] focus-visible:border-primary"
-                      id={`lot-${row.clientId}`}
-                      value={row.lotId}
-                      onChange={(e) =>
-                        updateRow(row.clientId, { lotId: e.target.value })
-                      }
-                      disabled={!row.batteryId}
+                      id={`stage-${row.clientId}`}
+                      value={row.stage}
+                      onChange={(e) => {
+                        const next = e.target.value as "RnD" | "Production";
+                        updateRow(row.clientId, {
+                          stage: next,
+                          ...(next === "RnD" ? { lotId: "" } : {}),
+                        });
+                      }}
                     >
-                      <option value="">Select lot</option>
-                      {row.lots.map((lot) => (
-                        <option key={lot.id} value={lot.id}>
-                          {lot.lotNumber}
-                        </option>
-                      ))}
+                      <option value="RnD">R&amp;D</option>
+                      <option value="Production">Production</option>
                     </select>
                   </div>
-                ) : null}
 
-                <div className="flex flex-col gap-1.5">
-                  <label
-                    className="text-sm text-text-primary"
-                    htmlFor={`duration-${row.clientId}`}
-                  >
-                    Duration (minutes)
-                  </label>
-                  <select
-                    className="rounded-input border border-border bg-surface px-3 py-2 text-sm hover:border-[#9aaec1] focus-visible:border-primary"
-                    id={`duration-${row.clientId}`}
-                    value={row.durationMinutes}
-                    onChange={(e) =>
-                      updateRow(row.clientId, {
-                        durationMinutes: e.target.value,
-                      })
+                  <SearchableSelect
+                    id={`lot-${row.clientId}`}
+                    label="Lot"
+                    placeholder="Search lots…"
+                    options={lotOptions}
+                    value={row.lotId}
+                    onValueChange={(v) => updateRow(row.clientId, { lotId: v })}
+                    disabled={row.stage === "RnD" || !row.batteryId}
+                    emptyLabel={
+                      row.stage === "RnD"
+                        ? "Not used for R&D"
+                        : row.batteryId
+                          ? "No lots for this battery"
+                          : "Select a battery first"
                     }
+                  />
+
+                  <div className="flex flex-col gap-1.5 lg:col-span-2 xl:col-span-1">
+                    <span className="text-sm text-text-primary">Duration</span>
+                    <div className="flex flex-wrap items-end gap-6">
+                      <div className="flex flex-col gap-1">
+                        <span className="text-xs text-text-secondary">Hours</span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-input border border-border bg-surface text-lg leading-none text-text-primary transition-colors hover:bg-appbg active:scale-[0.97] disabled:pointer-events-none disabled:opacity-40"
+                            type="button"
+                            aria-label="Decrease hours"
+                            onClick={() =>
+                              updateRow(row.clientId, {
+                                durationMinutes: adjustDurationMinutes(
+                                  row.durationMinutes,
+                                  -60,
+                                ),
+                              })
+                            }
+                          >
+                            −
+                          </button>
+                          <input
+                            className="min-w-[3rem] max-w-[4rem] rounded-input border border-border bg-surface px-2 py-1.5 text-center font-mono text-sm tabular-nums text-text-primary hover:border-[#9aaec1] focus-visible:border-primary focus-visible:outline-none"
+                            type="number"
+                            inputMode="numeric"
+                            min={0}
+                            max={8}
+                            aria-label="Hours"
+                            value={dh.hours}
+                            onChange={(e) =>
+                              onDurationHoursChange(row, e.target.value)
+                            }
+                            onBlur={() => onDurationFieldBlur(row)}
+                          />
+                          <button
+                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-input border border-border bg-surface text-lg leading-none text-text-primary transition-colors hover:bg-appbg active:scale-[0.97] disabled:pointer-events-none disabled:opacity-40"
+                            type="button"
+                            aria-label="Increase hours"
+                            onClick={() =>
+                              updateRow(row.clientId, {
+                                durationMinutes: adjustDurationMinutes(
+                                  row.durationMinutes,
+                                  60,
+                                ),
+                              })
+                            }
+                          >
+                            +
+                          </button>
+                        </div>
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <span className="text-xs text-text-secondary">
+                          Minutes
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-input border border-border bg-surface text-lg leading-none text-text-primary transition-colors hover:bg-appbg active:scale-[0.97] disabled:pointer-events-none disabled:opacity-40"
+                            type="button"
+                            aria-label="Decrease minutes"
+                            onClick={() =>
+                              updateRow(row.clientId, {
+                                durationMinutes: adjustDurationMinutes(
+                                  row.durationMinutes,
+                                  -15,
+                                ),
+                              })
+                            }
+                          >
+                            −
+                          </button>
+                          <input
+                            className="min-w-[3rem] max-w-[4rem] rounded-input border border-border bg-surface px-2 py-1.5 text-center font-mono text-sm tabular-nums text-text-primary hover:border-[#9aaec1] focus-visible:border-primary focus-visible:outline-none"
+                            type="number"
+                            inputMode="numeric"
+                            min={0}
+                            max={59}
+                            step={1}
+                            aria-label="Minutes"
+                            value={dh.minutes}
+                            onChange={(e) =>
+                              onDurationMinutesChange(row, e.target.value)
+                            }
+                            onBlur={() => onDurationFieldBlur(row)}
+                          />
+                          <button
+                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-input border border-border bg-surface text-lg leading-none text-text-primary transition-colors hover:bg-appbg active:scale-[0.97] disabled:pointer-events-none disabled:opacity-40"
+                            type="button"
+                            aria-label="Increase minutes"
+                            onClick={() =>
+                              updateRow(row.clientId, {
+                                durationMinutes: adjustDurationMinutes(
+                                  row.durationMinutes,
+                                  15,
+                                ),
+                              })
+                            }
+                          >
+                            +
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-4 flex justify-end">
+                  <button
+                    className="rounded-input border border-danger/40 bg-danger-light px-4 py-2 text-sm font-medium text-danger hover:opacity-90 active:scale-[0.97]"
+                    type="button"
+                    onClick={() => removeRow(row.clientId)}
                   >
-                    {DURATION_OPTIONS.map((m) => (
-                      <option key={m} value={m}>
-                        {m}
-                      </option>
-                    ))}
-                  </select>
+                    Remove entry
+                  </button>
                 </div>
               </div>
-
-              <div className="mt-4 flex justify-end">
-                <button
-                  className="rounded-input border border-danger/40 bg-danger-light px-4 py-2 text-sm font-medium text-danger hover:opacity-90 active:scale-[0.97]"
-                  type="button"
-                  onClick={() => removeRow(row.clientId)}
-                >
-                  Remove row
-                </button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
-        <div className="rounded-card border border-border bg-surface p-6 shadow-card">
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <span className="text-sm font-medium text-text-primary">
-              Shift time used
-            </span>
-            <span className="font-mono text-sm text-text-secondary">
-              {totalMinutes} / 480 min
-            </span>
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-center gap-4 sm:gap-6">
+            <button
+              className="rounded-input border border-border bg-transparent px-5 py-2 text-sm font-medium text-text-primary transition-colors hover:bg-appbg active:scale-[0.97] md:w-auto"
+              type="button"
+              onClick={addRow}
+            >
+              Add another Time Log Entry
+            </button>
+
+            <button
+              ref={submitRef}
+              className={`rounded-input bg-primary px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-light active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50 ${
+                submitShaking ? "animate-shake border-2 border-danger" : ""
+              }`}
+              type="submit"
+              disabled={
+                submitting || rows.length === 0 || !empId || shiftId === ""
+              }
+            >
+              {submitting ? "Submitting…" : "Submit All"}
+            </button>
           </div>
-          <div
-            className="mt-3 h-2 w-full overflow-hidden rounded bg-border"
-            role="progressbar"
-            aria-valuenow={totalMinutes}
-            aria-valuemin={0}
-            aria-valuemax={480}
-            aria-label="Minutes used out of 480"
-          >
-            <div
-              className={`h-full rounded transition-[width] duration-300 ease-out ${fillClass}`}
-              style={{ width: `${fillPercent}%` }}
-            />
-          </div>
-          <p className="mt-2 text-xs text-text-secondary">{remainingLabel}</p>
+
+          {submitError ? (
+            <p className="text-sm text-danger" role="alert">
+              {submitError}
+            </p>
+          ) : null}
         </div>
-
-        {submitError ? (
-          <p className="text-sm text-danger" role="alert">
-            {submitError}
-          </p>
-        ) : null}
-
-        <button
-          ref={submitRef}
-          className={`rounded-input bg-primary px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-light active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50 ${
-            submitShaking ? "animate-shake border-2 border-danger" : ""
-          }`}
-          type="submit"
-          disabled={submitting || rows.length === 0 || !empId || shiftId === ""}
-        >
-          {submitting ? "Submitting…" : "Submit All"}
-        </button>
       </form>
     </>
   );
