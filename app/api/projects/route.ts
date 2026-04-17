@@ -3,6 +3,8 @@ import { NextResponse } from "next/server";
 import type { ProjectDto } from "@/lib/api-dtos";
 import { prisma } from "@/lib/prisma";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(): Promise<NextResponse<{ projects: ProjectDto[] }>> {
   const projects = await prisma.project.findMany({
     where: { status: "active" },

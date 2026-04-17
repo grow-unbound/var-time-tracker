@@ -4,6 +4,8 @@ import type { LotDto } from "@/lib/api-dtos";
 import { batteryIdQuerySchema, parseSearchParams } from "@/lib/api-validation";
 import { prisma } from "@/lib/prisma";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(
   request: Request,
 ): Promise<NextResponse<{ lots: LotDto[] } | { error: string }>> {

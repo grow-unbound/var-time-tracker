@@ -4,6 +4,8 @@ import type { EmployeeDto } from "@/lib/api-dtos";
 import { deptIdQuerySchema, parseSearchParams } from "@/lib/api-validation";
 import { prisma } from "@/lib/prisma";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(
   request: Request,
 ): Promise<NextResponse<{ employees: EmployeeDto[] } | { error: string }>> {

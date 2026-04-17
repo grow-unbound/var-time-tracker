@@ -1,12 +1,29 @@
-import "dotenv/config";
+import { config } from "dotenv";
 
-import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
+config({ path: ".env" });
+config({ path: ".env.local", override: true });
+
+import { PrismaPg } from "@prisma/adapter-pg";
 import {
   PrismaClient,
   ProjectStatus,
   type Prisma,
   TimeEntryStage,
 } from "@prisma/client";
+import { Pool } from "pg";
+
+const connectionString = process.env.DATABASE_URL;
+if (!connectionString) {
+  throw new Error("DATABASE_URL is required for seeding");
+}
+
+const pool = new Pool({
+  connectionString,
+  ssl: connectionString.includes("supabase")
+    ? { rejectUnauthorized: false }
+    : undefined,
+});
+const adapter = new PrismaPg(pool);
 
 import {
   activitySeeds,
@@ -28,16 +45,7 @@ import {
   toStageValue,
 } from "./seed-helpers";
 
-const runtimeDatabaseUrl =
-  process.env.DATABASE_URL ?? "file:./prisma/var_tracker.db";
-
-const adapter = new PrismaBetterSqlite3({
-  url: runtimeDatabaseUrl,
-});
-
-const prisma = new PrismaClient({
-  adapter,
-});
+const prisma = new PrismaClient({ adapter });
 const DEFAULT_LOT_QUANTITY = 1;
 
 function expectDefined<T>(value: T | undefined, message: string): T {
@@ -49,31 +57,31 @@ function expectDefined<T>(value: T | undefined, message: string): T {
 }
 
 async function main(): Promise<void> {
-  await prisma.$transaction(async (tx) => {
-    await tx.timeEntry.deleteMany();
-    await tx.lot.deleteMany();
-    await tx.batteryModel.deleteMany();
-    await tx.activity.deleteMany();
-    await tx.employee.deleteMany();
-    await tx.project.deleteMany();
-    await tx.shift.deleteMany();
-    await tx.department.deleteMany();
+  // Sequential statements (no interactive $transaction) — required for Supabase transaction pooler :6543.
+  await prisma.timeEntry.deleteMany();
+  await prisma.lot.deleteMany();
+  await prisma.batteryModel.deleteMany();
+  await prisma.activity.deleteMany();
+  await prisma.employee.deleteMany();
+  await prisma.project.deleteMany();
+  await prisma.shift.deleteMany();
+  await prisma.department.deleteMany();
 
-    await tx.department.createMany({
+  await prisma.department.createMany({
       data: departmentSeeds.map((department) => ({
         deptCode: department.dept_code,
         name: department.name,
       })),
     });
 
-    await tx.shift.createMany({
+  await prisma.shift.createMany({
       data: shiftSeeds.map((shift) => ({
         name: shift.shift_name,
       })),
     });
 
-    const departments = await tx.department.findMany();
-    const shifts = await tx.shift.findMany();
+    const departments = await prisma.department.findMany();
+    const shifts = await prisma.shift.findMany();
 
     const departmentIdByName = new Map<string, number>(
       departments.map((department) => [department.name, department.id]),
@@ -82,7 +90,7 @@ async function main(): Promise<void> {
       shifts.map((shift) => [shift.name, shift.id]),
     );
 
-    await tx.activity.createMany({
+    await prisma.activity.createMany({
       data: activitySeeds.map((activity) => ({
         name: activity.activity_name,
         departmentId: expectDefined(
@@ -92,7 +100,7 @@ async function main(): Promise<void> {
       })),
     });
 
-    await tx.project.createMany({
+    await prisma.project.createMany({
       data: projectSeeds.map((project) => ({
         name: project.name,
         projectCode: project.project_code,
@@ -100,12 +108,12 @@ async function main(): Promise<void> {
       })),
     });
 
-    const projects = await tx.project.findMany();
+    const projects = await prisma.project.findMany();
     const projectIdByCode = new Map<string, number>(
       projects.map((project) => [project.projectCode, project.id]),
     );
 
-    await tx.batteryModel.createMany({
+    await prisma.batteryModel.createMany({
       data: batteryModelSeeds.map((batteryModel) => ({
         modelName: batteryModel.model_name,
         projectId: expectDefined(
@@ -115,7 +123,7 @@ async function main(): Promise<void> {
       })),
     });
 
-    const batteryModels = await tx.batteryModel.findMany({
+    const batteryModels = await prisma.batteryModel.findMany({
       include: {
         project: true,
       },
@@ -131,7 +139,7 @@ async function main(): Promise<void> {
       ]),
     );
 
-    await tx.lot.createMany({
+    await prisma.lot.createMany({
       data: lotSeeds.map((lot) => ({
         lotNumber: lot.lot_number,
         batteryId: expectDefined(
@@ -148,7 +156,7 @@ async function main(): Promise<void> {
       })),
     });
 
-    await tx.employee.createMany({
+    await prisma.employee.createMany({
       data: employeeSeeds.map((employee) => ({
         empId: employee.emp_id,
         empCode: employee.emp_id,
@@ -165,12 +173,12 @@ async function main(): Promise<void> {
       })),
     });
 
-    const activities = await tx.activity.findMany({
+    const activities = await prisma.activity.findMany({
       include: {
         department: true,
       },
     });
-    const lots = await tx.lot.findMany({
+    const lots = await prisma.lot.findMany({
       include: {
         battery: {
           include: {
@@ -251,9 +259,8 @@ async function main(): Promise<void> {
       },
     );
 
-    await tx.timeEntry.createMany({
-      data: timeEntries,
-    });
+  await prisma.timeEntry.createMany({
+    data: timeEntries,
   });
 }
 
