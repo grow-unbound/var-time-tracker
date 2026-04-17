@@ -5,6 +5,8 @@ import { parseSearchParams, shiftCheckQuerySchema } from "@/lib/api-validation";
 import { entryDateRangeUtc } from "@/lib/entry-date";
 import { prisma } from "@/lib/prisma";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(
   request: Request,
 ): Promise<NextResponse<ShiftCheckResponse | { error: string }>> {

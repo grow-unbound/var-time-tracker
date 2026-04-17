@@ -8,6 +8,8 @@ export interface DayTotalResponse {
   totalMinutes: number;
 }
 
+export const dynamic = "force-dynamic";
+
 export async function GET(
   request: Request,
 ): Promise<NextResponse<DayTotalResponse | { error: string }>> {

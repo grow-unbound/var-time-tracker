@@ -16,6 +16,8 @@ import { getTimeScopeDateRange } from "@/lib/dashboard-date-range";
 import { entryDateFromYmd, entryDateRangeUtc } from "@/lib/entry-date";
 import { prisma } from "@/lib/prisma";
 
+export const dynamic = "force-dynamic";
+
 export interface PostEntriesSuccess {
   ok: true;
   created: number;

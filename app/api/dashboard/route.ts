@@ -9,6 +9,8 @@ import { dashboardQuerySchema } from "@/lib/dashboard-validation";
 import { parseSearchParams } from "@/lib/api-validation";
 import { prisma } from "@/lib/prisma";
 
+export const dynamic = "force-dynamic";
+
 function minutesToHours(minutes: number): number {
   return Math.round((minutes / 60) * 1000) / 1000;
 }
