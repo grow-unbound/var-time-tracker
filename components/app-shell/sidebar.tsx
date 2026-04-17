@@ -52,7 +52,7 @@ const navItems: NavItem[] = [
     ),
   },
   {
-    href: "/all-entries",
+    href: "/entries",
     label: "All Entries",
     icon: (
       <svg
@@ -84,6 +84,100 @@ function isActivePath(currentPath: string, href: string): boolean {
   return currentPath.startsWith(href);
 }
 
+function getTodayDisplay(): {
+  todayLabel: string;
+  weekday: string;
+  day: string;
+  month: string;
+} {
+  const d = new Date();
+  const formatter = new Intl.DateTimeFormat("en-GB", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  });
+  const parts = formatter.formatToParts(d);
+  const part = (type: Intl.DateTimeFormatPartTypes): string =>
+    parts.find((p) => p.type === type)?.value ?? "";
+  return {
+    todayLabel: formatter.format(d),
+    weekday: part("weekday"),
+    day: part("day"),
+    month: part("month"),
+  };
+}
+
+interface SidebarBrandProps {
+  variant: "rail" | "drawer";
+}
+
+function SidebarBrand({ variant }: SidebarBrandProps): JSX.Element {
+  const isRail = variant === "rail";
+
+  return (
+    <div
+      className={[
+        "shrink-0 border-b border-white/10",
+        isRail
+          ? [
+              "px-4 pb-3 pt-5",
+              "md:px-[13px] md:pb-3 md:pt-4",
+              "md:flex md:flex-col md:items-center",
+              "md:group-hover:items-start",
+              "lg:items-start",
+            ].join(" ")
+          : "px-4 pb-3 pt-5",
+      ].join(" ")}
+    >
+      <Link
+        href="/"
+        className={[
+          "inline-flex max-w-full rounded-sm outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent",
+          isRail
+            ? "md:mx-auto md:group-hover:mx-0 lg:mx-0"
+            : "",
+        ].join(" ")}
+        aria-label="VAR Electrochem — home"
+      >
+        <div
+          className={
+            isRail
+              ? [
+                  "flex w-full max-w-[180px] justify-center overflow-hidden",
+                  "md:max-w-[48px]",
+                  "md:group-hover:max-w-[180px] md:group-focus-within:max-w-[180px]",
+                  "lg:max-w-[180px] lg:justify-start",
+                ].join(" ")
+              : "max-w-[180px]"
+          }
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/branding/var-logo.svg"
+            alt=""
+            width={180}
+            height={40}
+            className="h-9 w-auto object-contain object-left"
+          />
+        </div>
+      </Link>
+      <p
+        className={[
+          "mt-2 text-xs font-medium leading-snug text-sidebar",
+          isRail
+            ? [
+                "hidden text-left lg:block",
+                "md:group-hover:block md:group-focus-within:block",
+              ].join(" ")
+            : "text-left",
+        ].join(" ")}
+      >
+        Labor Time Tracker
+      </p>
+    </div>
+  );
+}
+
 interface SidebarNavProps {
   pathname: string;
   variant: "rail" | "drawer";
@@ -93,7 +187,7 @@ function SidebarNav({ pathname, variant }: SidebarNavProps): JSX.Element {
   const isRail = variant === "rail";
 
   return (
-    <nav aria-label="Primary" className="mt-2 flex flex-col gap-1 px-0">
+    <nav aria-label="Primary" className="flex flex-col gap-1 px-0 pt-1">
       {navItems.map((item) => {
         const active = isActivePath(pathname, item.href);
 
@@ -197,24 +291,20 @@ function SidebarDateFooter(
 /** In-flow rail: main content width follows sidebar (tablet hover expand). */
 export function SidebarRail(): JSX.Element {
   const pathname = usePathname();
-  const todayLabel = new Intl.DateTimeFormat("en-GB", {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-  }).format(new Date());
-  const [weekday, day, month] = todayLabel.split(" ");
+  const { todayLabel, weekday, day, month } = getTodayDisplay();
 
   return (
     <aside
       className={[
         "group relative z-20 hidden flex-col bg-primary md:flex",
-        "md:sticky md:top-[52px] md:h-[calc(100vh-52px)] md:shrink-0",
+        "md:sticky md:top-0 md:h-screen md:max-h-[100dvh] md:shrink-0",
         "md:w-12 md:overflow-hidden md:transition-[width] md:duration-200 md:ease-out",
         "md:hover:w-[220px] md:focus-within:w-[220px]",
         "lg:w-[220px] lg:overflow-visible",
       ].join(" ")}
     >
       <div className="flex min-h-0 w-full flex-1 flex-col">
+        <SidebarBrand variant="rail" />
         <SidebarNav pathname={pathname} variant="rail" />
         <SidebarDateFooter
           variant="rail"
@@ -233,7 +323,7 @@ interface SidebarMobileDrawerProps {
   onClose: () => void;
 }
 
-/** Full-width drawer below topbar; only used below `md`. */
+/** Full-height drawer overlay; only used below `md`. */
 export function SidebarMobileDrawer({
   open,
   onClose,
@@ -241,11 +331,7 @@ export function SidebarMobileDrawer({
   const pathname = usePathname();
   const openRef = useRef(open);
   openRef.current = open;
-  const todayLabel = new Intl.DateTimeFormat("en-GB", {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-  }).format(new Date());
+  const { todayLabel } = getTodayDisplay();
 
   useEffect(() => {
     if (!open) {
@@ -277,16 +363,17 @@ export function SidebarMobileDrawer({
       <button
         type="button"
         aria-label="Close menu"
-        className="fixed inset-0 top-[52px] z-30 bg-black/40 md:hidden"
+        className="fixed inset-0 z-30 bg-black/40 md:hidden"
         onClick={onClose}
       />
       <aside
-        className="fixed left-0 top-[52px] z-40 flex h-[calc(100vh-52px)] w-[220px] flex-col bg-primary shadow-lg md:hidden"
+        className="fixed left-0 top-0 z-40 flex h-full min-h-[100dvh] w-[220px] flex-col bg-primary shadow-lg md:hidden"
         role="dialog"
         aria-modal="true"
         aria-label="Navigation"
       >
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+          <SidebarBrand variant="drawer" />
           <SidebarNav pathname={pathname} variant="drawer" />
           <SidebarDateFooter variant="drawer" todayLabel={todayLabel} />
         </div>

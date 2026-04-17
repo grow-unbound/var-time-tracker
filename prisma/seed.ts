@@ -19,9 +19,11 @@ import {
   timeEntrySeeds,
 } from "./seed-data";
 import {
+  adjustMappedAprEntryDate,
   createActivityLookupKey,
   createBatteryLookupKey,
   createLotLookupKey,
+  mapSeedDateIntoCurrentIsoWeek,
   parseSeedDate,
   toStageValue,
 } from "./seed-helpers";
@@ -195,6 +197,10 @@ async function main(): Promise<void> {
       ]),
     );
 
+    const seedDateTimes = timeEntrySeeds.map((e) => parseSeedDate(e.date).getTime());
+    const minSeedTs = Math.min(...seedDateTimes);
+    const maxSeedTs = Math.max(...seedDateTimes);
+
     const timeEntries: Prisma.TimeEntryCreateManyInput[] = timeEntrySeeds.map(
       (entry) => {
         const projectCode = entry.project;
@@ -212,7 +218,13 @@ async function main(): Promise<void> {
         return {
           id: Number(entry.id),
           employeeId: entry.emp_id,
-          entryDate: parseSeedDate(entry.date),
+          entryDate: adjustMappedAprEntryDate(
+            mapSeedDateIntoCurrentIsoWeek(
+              parseSeedDate(entry.date),
+              minSeedTs,
+              maxSeedTs,
+            ),
+          ),
           shiftId: expectDefined(
             shiftIdByName.get(entry.shift),
             `Missing shift for time entry ${entry.id}`,
