@@ -1,6 +1,22 @@
 export type SeedStageValue = "R&D" | "Production";
 export type PrismaStageValue = "RnD" | "Production";
 
+/** Default audit actor for v2 seed rows and historical backfills. */
+export const SEED_AUDIT_EMP_ID = "PROJMGMT-001";
+
+export function startOfUtcDayFromDate(d: Date): Date {
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
+  return new Date(`${y}-${m}-${day}T00:00:00.000Z`);
+}
+
+export function addUtcDays(d: Date, days: number): Date {
+  const t = new Date(d.getTime());
+  t.setUTCDate(t.getUTCDate() + days);
+  return t;
+}
+
 function normalizeLookupPart(value: string): string {
   return value.trim().toLowerCase();
 }

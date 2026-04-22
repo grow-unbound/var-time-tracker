@@ -4,13 +4,18 @@ import { useMemo } from "react";
 import type { ChartOptions, TooltipItem } from "chart.js";
 import { Bar } from "react-chartjs-2";
 
-import { batteryStageColor, stageLabel } from "@/components/dashboard/chart-colors";
+import {
+  projectBatteryStageBarColor,
+  stageLabel,
+} from "@/components/dashboard/chart-colors";
 import "@/components/dashboard/chart-registry";
 import type { DashboardPrimaryRowDto } from "@/lib/dashboard-types";
 
 interface PrimaryChartProps {
   rows: DashboardPrimaryRowDto[];
   legendId: string;
+  /** Resolved palette hex per project id (from `getProjectColor(project.colorKey)`). */
+  projectColorById: ReadonlyMap<number, string>;
 }
 
 function rowKey(
@@ -21,8 +26,15 @@ function rowKey(
   return `${projectId}-${batteryId}-${stage}`;
 }
 
-export function PrimaryChart({ rows, legendId }: PrimaryChartProps): JSX.Element {
-  const { chartData } = useMemo(() => buildChartModel(rows), [rows]);
+export function PrimaryChart({
+  rows,
+  legendId,
+  projectColorById,
+}: PrimaryChartProps): JSX.Element {
+  const { chartData } = useMemo(
+    () => buildChartModel(rows, projectColorById),
+    [rows, projectColorById],
+  );
   void legendId;
 
   const options: ChartOptions<"bar"> = useMemo(
@@ -122,13 +134,16 @@ function formatHours(hours: number): string {
   return `${h}h ${m}m`;
 }
 
-function buildChartModel(rows: DashboardPrimaryRowDto[]): {
+function buildChartModel(
+  rows: DashboardPrimaryRowDto[],
+  projectColorById: ReadonlyMap<number, string>,
+): {
   chartData: {
     labels: string[];
     datasets: {
       label: string;
       data: number[];
-      backgroundColor: string;
+      backgroundColor: string[];
       borderRadius: number;
     }[];
   };
@@ -197,16 +212,18 @@ function buildChartModel(rows: DashboardPrimaryRowDto[]): {
       (r) => r.batteryId === batteryId && r.stage === stageVal,
     );
     const bi = batteryIndex.get(batteryId) ?? 0;
-    const color = batteryStageColor(bi, stageVal);
     const data = projectOrder.map((pid) => {
       return hourLookup.get(rowKey(pid, batteryId, stageVal)) ?? 0;
     });
+    const backgroundColor = projectOrder.map((pid) =>
+      projectBatteryStageBarColor(projectColorById.get(pid), bi, stageVal),
+    );
     const batteryName = sample?.batteryName ?? `Battery ${batteryId}`;
     const label = `${batteryName} · ${stageLabel(stageVal)}`;
     return {
       label,
       data,
-      backgroundColor: color,
+      backgroundColor,
       borderRadius: 4,
     };
   });
@@ -216,9 +233,13 @@ function buildChartModel(rows: DashboardPrimaryRowDto[]): {
     const batteryId = Number(bidStr);
     const stageVal = stage as DashboardPrimaryRowDto["stage"];
     const bi = batteryIndex.get(batteryId) ?? 0;
-    const color = batteryStageColor(bi, stageVal);
     const sample = rows.find(
       (r) => r.batteryId === batteryId && r.stage === stageVal,
+    );
+    const color = projectBatteryStageBarColor(
+      sample ? projectColorById.get(sample.projectId) : undefined,
+      bi,
+      stageVal,
     );
     const batteryName = sample?.batteryName ?? `Battery ${batteryId}`;
     return {

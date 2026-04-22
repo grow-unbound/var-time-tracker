@@ -66,14 +66,12 @@ function TimeScopeSelect({
 
   return (
     <div ref={rootRef} className="relative min-w-[140px] max-w-[200px]">
-      <span className="mb-1 block text-[11px] font-medium uppercase tracking-[0.08em] text-text-secondary">
-        Time scope
-      </span>
       <button
         type="button"
         id={id}
         aria-expanded={open}
         aria-haspopup="listbox"
+        aria-label={`Time scope. ${summary}`}
         onClick={() => setOpen((o) => !o)}
         className={`flex w-full items-center justify-between gap-1 rounded-input border px-2 py-2 text-left text-xs font-medium transition-colors ${
           isFiltered
@@ -81,7 +79,16 @@ function TimeScopeSelect({
             : "border-border bg-surface text-text-primary hover:border-[#9aaec1]"
         }`}
       >
-        <span className="truncate">{summary}</span>
+        <span className="min-w-0 flex-1 truncate text-left text-xs font-medium">
+          <span className="text-text-secondary">Time scope</span>{" "}
+          <span
+            className={
+              isFiltered ? "font-medium text-primary" : "text-text-primary"
+            }
+          >
+            {summary}
+          </span>
+        </span>
         <svg
           aria-hidden
           className={`h-4 w-4 shrink-0 text-text-secondary transition-transform ${
@@ -182,7 +189,7 @@ export function AppFiltersPanel({
     timeScope !== "all";
 
   return (
-    <div className="flex min-w-0 flex-1 flex-wrap items-end gap-2 lg:justify-end">
+    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 lg:justify-end">
       <TimeScopeSelect
         id={`${baseId}-time-scope`}
         value={timeScope}
@@ -192,6 +199,7 @@ export function AppFiltersPanel({
         <SearchableMultiSelect
           id={`${baseId}-dept`}
           label="Departments"
+          labelLayout="inline"
           options={deptOptions}
           selectedIds={selectedDeptIds}
           onChange={onDeptChange}
@@ -201,6 +209,7 @@ export function AppFiltersPanel({
         <SearchableMultiSelect
           id={`${baseId}-project`}
           label="Projects"
+          labelLayout="inline"
           options={projectOptions}
           selectedIds={selectedProjectIds}
           onChange={onProjectChange}
@@ -210,6 +219,7 @@ export function AppFiltersPanel({
         <SearchableMultiSelect
           id={`${baseId}-battery`}
           label="Battery"
+          labelLayout="inline"
           options={batteryOptions}
           selectedIds={selectedBatteryIds}
           onChange={onBatteryChange}
@@ -220,9 +230,9 @@ export function AppFiltersPanel({
           type="button"
           onClick={onClearFilters}
           disabled={!hasFilterSelection}
-          className="mb-0.5 rounded-input border border-border bg-appbg px-3 py-2 text-xs font-medium text-text-secondary hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-40"
+          className="rounded-input border border-border bg-appbg px-3 py-2 text-xs font-medium text-text-secondary hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-40"
         >
-          Clear filters
+          Clear
         </button>
       ) : null}
     </div>

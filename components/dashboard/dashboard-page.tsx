@@ -1,9 +1,10 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 
 import type { BatteryDto, DepartmentDto, ProjectDto } from "@/lib/api-dtos";
+import { getProjectColor } from "@/lib/constants";
 import type { TimeScope } from "@/lib/dashboard-date-range";
 import type { DashboardResponseDto } from "@/lib/dashboard-types";
 
@@ -146,6 +147,14 @@ export function DashboardPage(): JSX.Element {
     void fetchDashboard();
   }, [fetchDashboard]);
 
+  const projectColorById = useMemo(() => {
+    const m = new Map<number, string>();
+    for (const p of projects) {
+      m.set(p.id, getProjectColor(p.colorKey));
+    }
+    return m;
+  }, [projects]);
+
   const onClearFilters = useCallback(() => {
     setScope("all");
     setSelectedDeptIds([]);
@@ -202,7 +211,11 @@ export function DashboardPage(): JSX.Element {
         </h2>
         <div className="mt-4">
           {dashboard ? (
-            <PrimaryChart rows={dashboard.primary} legendId={primaryLegendId} />
+            <PrimaryChart
+              rows={dashboard.primary}
+              legendId={primaryLegendId}
+              projectColorById={projectColorById}
+            />
           ) : loading ? (
             <PrimaryChartSkeleton />
           ) : null}
