@@ -61,7 +61,7 @@ export const entriesListSortFieldSchema = z.enum([
   "duration",
 ]);
 
-const commaSeparatedPositiveIdsSchema = z
+export const commaSeparatedPositiveIdsSchema = z
   .string()
   .optional()
   .transform((s) => {
@@ -76,6 +76,40 @@ const commaSeparatedPositiveIdsSchema = z
     );
     return ids.length > 0 ? ids.slice(0, 100) : undefined;
   });
+
+export const shiftBoardQuerySchema = z.object({
+  date: dateYmdSchema,
+  shift: z.coerce.number().int().positive(),
+  depts: commaSeparatedPositiveIdsSchema,
+  projects: commaSeparatedPositiveIdsSchema,
+});
+
+export const shiftBoardPersonQuerySchema = z.object({
+  date: dateYmdSchema,
+  shift: z.coerce.number().int().positive(),
+  depts: commaSeparatedPositiveIdsSchema,
+});
+
+const durationHoursSchema = z
+  .number()
+  .min(0.25)
+  .max(8)
+  .refine(
+    (n) => {
+      const scaled = Math.round(n * 100);
+      return scaled % 25 === 0;
+    },
+    { message: "duration must represent 15-minute steps (0.25h increments)" },
+  );
+
+export const postShiftAssignmentBodySchema = z.object({
+  emp_id: z.string().min(1),
+  sub_project_id: z.number().int().positive(),
+  activity_id: z.number().int().positive(),
+  shift_date: dateYmdSchema,
+  shift_id: z.number().int().positive(),
+  duration_hours: durationHoursSchema,
+});
 
 /** Matches `TimeScope` in lib/dashboard-date-range.ts */
 export const entriesListTimeScopeSchema = z.enum([
