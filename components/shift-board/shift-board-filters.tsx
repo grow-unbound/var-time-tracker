@@ -1,8 +1,33 @@
 "use client";
 
+import { useCallback, useId, useRef } from "react";
+
 import type { DepartmentDto, ProjectDto, ShiftDto } from "@/lib/api-dtos";
 import { SearchableMultiSelect } from "@/components/dashboard/searchable-multi-select";
 import { SegmentedToggle } from "@/components/dashboard/segmented-toggle";
+import { localYmd } from "@/lib/shift-board-date";
+
+const SEARCH_PLACEHOLDER: Record<"matrix" | "person", string> = {
+  matrix: "Search department or activity…",
+  person: "Search employee or department…",
+};
+
+function addDaysToYmd(ymd: string, deltaDays: number): string {
+  const [y, m, d] = ymd.split("-").map(Number);
+  const dt = new Date(y, m - 1, d);
+  dt.setDate(dt.getDate() + deltaDays);
+  return localYmd(dt);
+}
+
+function formatDateNavLabel(ymd: string): string {
+  const [y, mo, da] = ymd.split("-").map(Number);
+  const dt = new Date(y, mo - 1, da);
+  return dt.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
 
 export function ShiftBoardFilters({
   baseId,
@@ -41,6 +66,9 @@ export function ShiftBoardFilters({
   view: "matrix" | "person";
   onView: (v: "matrix" | "person") => void;
 }): JSX.Element {
+  const dateInputRef = useRef<HTMLInputElement>(null);
+  const dateFieldId = useId();
+
   const deptOptions = departments.map((d) => ({
     id: d.id,
     label: d.name,
@@ -52,93 +80,128 @@ export function ShiftBoardFilters({
   const hasFilterSelection =
     selectedDeptIds.length > 0 || selectedProjectIds.length > 0;
 
+  const openDatePicker = useCallback(() => {
+    const el = dateInputRef.current;
+    if (!el) {
+      return;
+    }
+    if (typeof el.showPicker === "function") {
+      void el.showPicker();
+    } else {
+      el.click();
+    }
+  }, []);
+
   return (
-    <div className="w-full space-y-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <SegmentedToggle
-          ariaLabel="View mode"
-          value={view}
-          onChange={onView}
-          options={[
-            { value: "matrix", label: "Matrix" },
-            { value: "person", label: "Person" },
-          ]}
+    <div className="grid w-full grid-cols-1 items-center gap-3 md:grid-cols-[1fr_1fr_1fr]">
+      <div className="flex min-w-0 flex-wrap items-center justify-center gap-2 md:justify-start">
+        <div className="shrink-0">
+          <SegmentedToggle
+            ariaLabel="View mode"
+            value={view}
+            onChange={onView}
+            options={[
+              { value: "matrix", label: "Matrix" },
+              { value: "person", label: "Person" },
+            ]}
+          />
+        </div>
+        <input
+          type="search"
+          value={search}
+          onChange={(e) => onSearch(e.target.value)}
+          placeholder={SEARCH_PLACEHOLDER[view]}
+          className="min-w-0 w-full max-w-md flex-1 rounded-input border border-border px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary/80"
+          autoComplete="off"
         />
       </div>
-      <div className="flex min-w-0 flex-1 flex-wrap items-end gap-2">
-        <label className="flex min-w-[150px] flex-col gap-1 text-xs font-medium text-text-secondary">
-          Date
+
+      <div className="flex flex-wrap items-center justify-center gap-3">
+        <div className="relative">
           <input
+            id={dateFieldId}
+            ref={dateInputRef}
             type="date"
             value={dateYmd}
             onChange={(e) => onDateYmd(e.target.value)}
-            className="rounded-input border border-border bg-surface px-2 py-2 text-sm text-text-primary"
+            aria-label="Choose shift date"
+            className="sr-only"
           />
-        </label>
-        <div className="min-w-[180px]">
-          <span className="mb-1 block text-[11px] font-medium uppercase tracking-[0.08em] text-text-secondary">
-            Shift
-          </span>
-          <div
-            className="inline-flex rounded-input bg-appbg p-[3px]"
-            role="group"
-            aria-label="Shift"
-          >
-            {shifts.map((s) => {
-              const active = shiftId === s.id;
-              return (
-                <button
-                  key={s.id}
-                  type="button"
-                  onClick={() => onShiftId(s.id)}
-                  className={`rounded-[6px] px-2.5 py-1.5 text-xs font-medium ${
-                    active
-                      ? "bg-primary text-white"
-                      : "text-text-secondary hover:text-text-primary"
-                  }`}
-                >
-                  {s.name.replace(" Shift", "")}
-                </button>
-              );
-            })}
+          <div className="inline-flex items-center gap-0.5 rounded-md border border-border bg-surface px-1 py-0.5 shadow-sm">
+            <button
+              type="button"
+              aria-label="Previous day"
+              className="shrink-0 rounded border border-transparent px-1.5 py-0.5 text-sm hover:bg-appbg active:scale-95"
+              onClick={() => onDateYmd(addDaysToYmd(dateYmd, -1))}
+            >
+              ←
+            </button>
+            <button
+              type="button"
+              className="max-w-[11rem] min-w-0 truncate px-1 py-0.5 text-center text-[11px] leading-tight text-text-secondary underline decoration-border decoration-dotted underline-offset-2 hover:text-text-primary"
+              onClick={openDatePicker}
+              aria-controls={dateFieldId}
+              title={formatDateNavLabel(dateYmd)}
+              aria-label={`Shift date: ${formatDateNavLabel(dateYmd)}. Click to open calendar.`}
+            >
+              {formatDateNavLabel(dateYmd)}
+            </button>
+            <button
+              type="button"
+              aria-label="Next day"
+              className="shrink-0 rounded border border-transparent px-1.5 py-0.5 text-sm hover:bg-appbg active:scale-95"
+              onClick={() => onDateYmd(addDaysToYmd(dateYmd, 1))}
+            >
+              →
+            </button>
           </div>
         </div>
-        <div className="min-w-[140px] max-w-[200px]">
+
+        <div className="min-w-[10rem]">
+          <select
+            id={`${baseId}-shift`}
+            value={shiftId ?? ""}
+            onChange={(e) => onShiftId(Number(e.target.value))}
+            aria-label="Shift"
+            className="w-full min-w-0 rounded-input border border-border bg-surface px-2 py-2 text-sm text-text-primary"
+          >
+            {shifts.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name.replace(" Shift", "")}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <div className="flex min-w-0 flex-wrap items-center justify-center gap-2 md:justify-end">
+        <div className="min-w-[130px] max-w-[200px]">
           <SearchableMultiSelect
             id={`${baseId}-dept`}
             label="Departments"
+            labelLayout="inline"
             options={deptOptions}
             selectedIds={selectedDeptIds}
             onChange={onDeptChange}
           />
         </div>
-        <div className="min-w-[140px] max-w-[200px]">
+        <div className="min-w-[130px] max-w-[200px]">
           <SearchableMultiSelect
             id={`${baseId}-project`}
             label="Projects"
+            labelLayout="inline"
             options={projectOptions}
             selectedIds={selectedProjectIds}
             onChange={onProjectChange}
           />
         </div>
-        <label className="min-w-[160px] max-w-[240px] flex-1 flex flex-col gap-1 text-xs font-medium text-text-secondary">
-          Employee search
-          <input
-            type="search"
-            value={search}
-            onChange={(e) => onSearch(e.target.value)}
-            placeholder="Filter by name"
-            className="rounded-input border border-border bg-surface px-2 py-2 text-sm text-text-primary"
-            autoComplete="off"
-          />
-        </label>
         <button
           type="button"
           onClick={onClearFilters}
           disabled={!hasFilterSelection}
-          className="mb-0.5 rounded-input border border-border bg-appbg px-3 py-2 text-xs font-medium text-text-secondary hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-40"
+          className="shrink-0 rounded-input border border-border bg-appbg px-3 py-2 text-xs font-medium text-text-secondary hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-40"
         >
-          Clear filters
+          Clear
         </button>
       </div>
     </div>

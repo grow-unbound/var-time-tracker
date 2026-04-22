@@ -223,7 +223,7 @@ function SidebarBrand({ variant }: SidebarBrandProps): JSX.Element {
           />
         </div>
       </Link>
-      <p
+      {/* <p
         className={[
           "mt-2 text-xs font-medium leading-snug text-sidebar",
           isRail
@@ -235,7 +235,7 @@ function SidebarBrand({ variant }: SidebarBrandProps): JSX.Element {
         ].join(" ")}
       >
         Labor Time Tracker
-      </p>
+      </p> */}
     </div>
   );
 }

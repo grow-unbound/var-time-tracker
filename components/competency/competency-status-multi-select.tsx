@@ -104,16 +104,20 @@ export function CompetencyStatusMultiSelect({
     return selected.includes(value);
   };
 
+  const statusLabel = "Competency status";
+
   return (
     <div ref={rootRef} className="relative w-full min-w-0">
-      <span className="mb-1 block text-[11px] font-medium uppercase tracking-[0.08em] text-text-secondary">
-        Competency status
-      </span>
       <button
         type="button"
         id={listboxId}
         aria-expanded={open}
         aria-haspopup="listbox"
+        aria-label={`${statusLabel}. ${
+          selected.length === 0 || selected.length === total
+            ? "All options"
+            : `${selected.length} selected`
+        }`}
         onClick={() => {
           setOpen((o) => !o);
         }}
@@ -123,7 +127,16 @@ export function CompetencyStatusMultiSelect({
             : "border-border bg-surface text-text-primary hover:border-[#9aaec1]"
         }`}
       >
-        <span className="truncate">{summary}</span>
+        <span className="min-w-0 flex-1 truncate text-left text-xs font-medium">
+          <span className="text-text-secondary">{statusLabel}</span>{" "}
+          <span
+            className={
+              isFiltered ? "font-medium text-primary" : "text-text-primary"
+            }
+          >
+            {summary}
+          </span>
+        </span>
         <svg
           aria-hidden
           className={`h-4 w-4 shrink-0 text-text-secondary transition-transform ${

@@ -7,9 +7,13 @@ export interface SearchableMultiSelectOption {
   label: string;
 }
 
+type LabelLayout = "above" | "inline";
+
 interface SearchableMultiSelectProps {
   id?: string;
   label: string;
+  /** "inline" shows the label in the trigger (e.g. "Departments (2)") to save vertical space */
+  labelLayout?: LabelLayout;
   options: SearchableMultiSelectOption[];
   selectedIds: number[];
   onChange: (ids: number[]) => void;
@@ -31,6 +35,7 @@ function normalizeSelection(
 export function SearchableMultiSelect({
   id: providedId,
   label,
+  labelLayout = "above",
   options,
   selectedIds,
   onChange,
@@ -109,16 +114,39 @@ export function SearchableMultiSelect({
     return selectedIds.includes(optionId);
   };
 
+  const triggerLabel =
+    labelLayout === "inline" ? (
+      <span className="min-w-0 flex-1 truncate text-left text-xs font-medium">
+        <span className="text-text-secondary">{label}</span>{" "}
+        <span
+          className={
+            isFiltered ? "font-medium text-primary" : "text-text-primary"
+          }
+        >
+          {summary}
+        </span>
+      </span>
+    ) : (
+      <span className="truncate">{summary}</span>
+    );
+
   return (
     <div ref={rootRef} className="relative w-full min-w-0">
-      <span className="mb-1 block text-[11px] font-medium uppercase tracking-[0.08em] text-text-secondary">
-        {label}
-      </span>
+      {labelLayout === "above" ? (
+        <span className="mb-1 block text-[11px] font-medium uppercase tracking-[0.08em] text-text-secondary">
+          {label}
+        </span>
+      ) : null}
       <button
         type="button"
         id={listboxId}
         aria-expanded={open}
         aria-haspopup="listbox"
+        aria-label={
+          labelLayout === "inline"
+            ? `${label}. ${selectedIds.length === 0 || selectedIds.length === total ? "All options" : `${selectedIds.length} selected`}`
+            : undefined
+        }
         onClick={() => {
           setOpen((o) => !o);
         }}
@@ -128,7 +156,7 @@ export function SearchableMultiSelect({
             : "border-border bg-surface text-text-primary hover:border-[#9aaec1]"
         }`}
       >
-        <span className="truncate">{summary}</span>
+        {triggerLabel}
         <svg
           aria-hidden
           className={`h-4 w-4 shrink-0 text-text-secondary transition-transform ${

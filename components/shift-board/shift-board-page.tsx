@@ -1,11 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 
 import { ShiftBoardAssignModal } from "@/components/shift-board/shift-board-assign-modal";
+import type { ShiftBoardAssignModalContext } from "@/components/shift-board/shift-board-assign-modal";
 import { ShiftBoardFilters } from "@/components/shift-board/shift-board-filters";
 import { ShiftBoardMatrix } from "@/components/shift-board/shift-board-matrix";
 import { ShiftBoardPerson } from "@/components/shift-board/shift-board-person";
+import {
+  ShiftBoardMatrixSkeleton,
+  ShiftBoardPersonSkeleton,
+} from "@/components/shift-board/shift-board-skeletons";
 import type { DepartmentDto, ProjectDto, ShiftDto } from "@/lib/api-dtos";
 import { localYmd } from "@/lib/shift-board-date";
 import type {
@@ -52,22 +57,17 @@ export function ShiftBoardPage(): JSX.Element {
   const [person, setPerson] = useState<ShiftBoardPersonResponseDto | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const boardRef = useRef<ShiftBoardResponseDto | null>(null);
+  const personRef = useRef<ShiftBoardPersonResponseDto | null>(null);
+  boardRef.current = board;
+  personRef.current = person;
 
-  const [assignCtx, setAssignCtx] = useState<{
-    activityId: number;
-    activityName: string;
-    projectId: number;
-    projectName: string;
-    subProjectId: number;
-  } | null>(null);
+  const [assignCtx, setAssignCtx] = useState<ShiftBoardAssignModalContext | null>(
+    null,
+  );
   const [assignSubmitting, setAssignSubmitting] = useState(false);
   const [assignError, setAssignError] = useState<string | null>(null);
-
-  const [confirmRemove, setConfirmRemove] = useState<{
-    assignmentId: number;
-    label: string;
-  } | null>(null);
-  const [removeSubmitting, setRemoveSubmitting] = useState(false);
+  const [removing, setRemoving] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -111,96 +111,100 @@ export function ShiftBoardPage(): JSX.Element {
     };
   }, []);
 
-  const refetchMatrix = useCallback(async (): Promise<void> => {
+  const loadViewData = useCallback(async (): Promise<void> => {
     if (shiftId == null) {
       return;
     }
-    setLoading(true);
+    const blocking =
+      boardRef.current == null ||
+      (view === "person" && personRef.current == null);
+    if (blocking) {
+      setLoading(true);
+    }
     setLoadError(null);
+    const qM = buildShiftBoardQuery({
+      dateYmd,
+      shiftId,
+      deptIds: selectedDeptIds,
+      projectIds: selectedProjectIds,
+    });
     try {
-      const q = buildShiftBoardQuery({
-        dateYmd,
-        shiftId,
-        deptIds: selectedDeptIds,
-        projectIds: selectedProjectIds,
-      });
-      const res = await fetch(`/api/shift-board?${q}`, { cache: "no-store" });
-      const json: unknown = await res.json();
-      if (!res.ok) {
+      const mRes = await fetch(`/api/shift-board?${qM}`, { cache: "no-store" });
+      const mJson: unknown = await mRes.json();
+      if (!mRes.ok) {
         const msg =
-          typeof json === "object" &&
-          json !== null &&
-          "error" in json &&
-          typeof (json as { error: string }).error === "string"
-            ? (json as { error: string }).error
+          typeof mJson === "object" &&
+          mJson !== null &&
+          "error" in mJson &&
+          typeof (mJson as { error: string }).error === "string"
+            ? (mJson as { error: string }).error
             : "Failed to load shift board";
         throw new Error(msg);
       }
-      setBoard(json as ShiftBoardResponseDto);
+      setBoard(mJson as ShiftBoardResponseDto);
+
+      if (view === "person") {
+        const qP = new URLSearchParams();
+        qP.set("date", dateYmd);
+        qP.set("shift", String(shiftId));
+        if (selectedDeptIds.length > 0) {
+          qP.set("depts", selectedDeptIds.join(","));
+        }
+        if (selectedProjectIds.length > 0) {
+          qP.set("projects", selectedProjectIds.join(","));
+        }
+        const pRes = await fetch(
+          `/api/shift-board/person-view?${qP.toString()}`,
+          { cache: "no-store" },
+        );
+        const pJson: unknown = await pRes.json();
+        if (!pRes.ok) {
+          const msg =
+            typeof pJson === "object" &&
+            pJson !== null &&
+            "error" in pJson &&
+            typeof (pJson as { error: string }).error === "string"
+              ? (pJson as { error: string }).error
+              : "Failed to load person view";
+          throw new Error(msg);
+        }
+        setPerson(pJson as ShiftBoardPersonResponseDto);
+      } else {
+        setPerson(null);
+      }
     } catch (e) {
       setBoard(null);
-      setLoadError(e instanceof Error ? e.message : "Failed to load");
-    } finally {
-      setLoading(false);
-    }
-  }, [dateYmd, shiftId, selectedDeptIds, selectedProjectIds]);
-
-  const refetchPerson = useCallback(async (): Promise<void> => {
-    if (shiftId == null) {
-      return;
-    }
-    setLoading(true);
-    setLoadError(null);
-    try {
-      const q = new URLSearchParams();
-      q.set("date", dateYmd);
-      q.set("shift", String(shiftId));
-      if (selectedDeptIds.length > 0) {
-        q.set("depts", selectedDeptIds.join(","));
-      }
-      const res = await fetch(
-        `/api/shift-board/person-view?${q.toString()}`,
-        { cache: "no-store" },
-      );
-      const json: unknown = await res.json();
-      if (!res.ok) {
-        const msg =
-          typeof json === "object" &&
-          json !== null &&
-          "error" in json &&
-          typeof (json as { error: string }).error === "string"
-            ? (json as { error: string }).error
-            : "Failed to load person view";
-        throw new Error(msg);
-      }
-      setPerson(json as ShiftBoardPersonResponseDto);
-    } catch (e) {
       setPerson(null);
       setLoadError(e instanceof Error ? e.message : "Failed to load");
     } finally {
       setLoading(false);
     }
-  }, [dateYmd, shiftId, selectedDeptIds]);
+  }, [dateYmd, shiftId, selectedDeptIds, selectedProjectIds, view]);
 
   useEffect(() => {
     if (!shiftsReady || shiftId == null) {
       return;
     }
-    if (view === "matrix") {
-      void refetchMatrix();
-    } else {
-      void refetchPerson();
-    }
-  }, [shiftsReady, shiftId, view, refetchMatrix, refetchPerson]);
+    void loadViewData();
+  }, [shiftsReady, shiftId, loadViewData]);
 
   const onClearFilters = useCallback(() => {
     setSelectedDeptIds([]);
     setSelectedProjectIds([]);
   }, []);
 
-  const submitAssign = useCallback(
-    async (payload: { empId: string; durationHours: number }) => {
-      if (assignCtx == null || shiftId == null) {
+  const refetchAfterMutation = useCallback(async (): Promise<void> => {
+    await loadViewData();
+  }, [loadViewData]);
+
+  const submitCreate = useCallback(
+    async (payload: {
+      empId: string;
+      durationHours: number;
+      activityId: number;
+      subProjectId: number;
+    }) => {
+      if (shiftId == null) {
         return;
       }
       setAssignSubmitting(true);
@@ -211,8 +215,8 @@ export function ShiftBoardPage(): JSX.Element {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             emp_id: payload.empId,
-            sub_project_id: assignCtx.subProjectId,
-            activity_id: assignCtx.activityId,
+            sub_project_id: payload.subProjectId,
+            activity_id: payload.activityId,
             shift_date: dateYmd,
             shift_id: shiftId,
             duration_hours: payload.durationHours,
@@ -230,22 +234,55 @@ export function ShiftBoardPage(): JSX.Element {
           throw new Error(msg);
         }
         setAssignCtx(null);
-        await refetchMatrix();
-        if (view === "person") {
-          await refetchPerson();
-        }
+        await refetchAfterMutation();
       } catch (e) {
         setAssignError(e instanceof Error ? e.message : "Save failed");
       } finally {
         setAssignSubmitting(false);
       }
     },
-    [assignCtx, dateYmd, shiftId, refetchMatrix, refetchPerson, view],
+    [dateYmd, shiftId, refetchAfterMutation],
   );
 
-  const doDelete = useCallback(
+  const submitEdit = useCallback(
+    async (payload: { assignmentId: number; durationHours: number }) => {
+      setAssignSubmitting(true);
+      setAssignError(null);
+      try {
+        const res = await fetch(
+          `/api/shift-assignments/${payload.assignmentId}`,
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ duration_hours: payload.durationHours }),
+          },
+        );
+        const json: unknown = await res.json();
+        if (!res.ok) {
+          const msg =
+            typeof json === "object" &&
+            json !== null &&
+            "error" in json &&
+            typeof (json as { error: string }).error === "string"
+              ? (json as { error: string }).error
+              : "Save failed";
+          throw new Error(msg);
+        }
+        setAssignCtx(null);
+        await refetchAfterMutation();
+      } catch (e) {
+        setAssignError(e instanceof Error ? e.message : "Save failed");
+      } finally {
+        setAssignSubmitting(false);
+      }
+    },
+    [refetchAfterMutation],
+  );
+
+  const onRemove = useCallback(
     async (assignmentId: number) => {
-      setRemoveSubmitting(true);
+      setRemoving(true);
+      setAssignError(null);
       try {
         const res = await fetch(`/api/shift-assignments/${assignmentId}`, {
           method: "DELETE",
@@ -254,61 +291,74 @@ export function ShiftBoardPage(): JSX.Element {
           const j = (await res.json()) as { error?: string };
           throw new Error(j.error ?? "Delete failed");
         }
-        setConfirmRemove(null);
-        await refetchMatrix();
-        if (view === "person") {
-          await refetchPerson();
-        }
+        setAssignCtx(null);
+        await refetchAfterMutation();
       } catch (e) {
-        setLoadError(e instanceof Error ? e.message : "Delete failed");
+        setAssignError(e instanceof Error ? e.message : "Delete failed");
       } finally {
-        setRemoveSubmitting(false);
+        setRemoving(false);
       }
     },
-    [refetchMatrix, refetchPerson, view],
+    [refetchAfterMutation],
   );
 
-  const onRemoveChip = useCallback((a: ShiftBoardAssignmentDto) => {
-    setConfirmRemove({
-      assignmentId: a.assignmentId,
-      label: `${a.firstName} ${a.lastName} — ${a.durationHours}h`,
-    });
-  }, []);
+  const onMatrixCellAssign = useCallback(
+    (ctx: {
+      activityId: number;
+      activityName: string;
+      projectId: number;
+      projectName: string;
+      subProjectId: number;
+    }) => {
+      setAssignError(null);
+      setAssignCtx({
+        mode: "create",
+        ...ctx,
+      });
+    },
+    [],
+  );
+
+  const onMatrixAssignmentClick = useCallback(
+    (a: ShiftBoardAssignmentDto) => {
+      setAssignError(null);
+      setAssignCtx({ mode: "edit", assignment: a });
+    },
+    [],
+  );
+
+  const skeletonProjectCount = useMemo(() => {
+    if (selectedProjectIds.length > 0) {
+      return selectedProjectIds.length;
+    }
+    if (projects.length > 0) {
+      return projects.length;
+    }
+    return 5;
+  }, [selectedProjectIds.length, projects.length]);
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between lg:gap-8">
-        <header className="min-w-0 flex-1 lg:max-w-[50%]">
-          <p className="font-mono text-xs uppercase tracking-[0.18em] text-text-secondary">
-            Production Planning
-          </p>
-          <h1 className="mt-2 text-[22px] font-semibold tracking-tight text-text-primary">
-            Shift board
-          </h1>
-        </header>
-        <div className="w-full lg:ml-auto lg:max-w-[100%]">
-          <div className="rounded-card border border-border bg-surface p-3 shadow-card">
-            <ShiftBoardFilters
-              baseId={baseId}
-              dateYmd={dateYmd}
-              onDateYmd={setDateYmd}
-              shifts={shifts}
-              shiftId={shiftId}
-              onShiftId={setShiftId}
-              departments={departments}
-              projects={projects}
-              selectedDeptIds={selectedDeptIds}
-              selectedProjectIds={selectedProjectIds}
-              onDeptChange={setSelectedDeptIds}
-              onProjectChange={setSelectedProjectIds}
-              search={search}
-              onSearch={setSearch}
-              onClearFilters={onClearFilters}
-              view={view}
-              onView={setView}
-            />
-          </div>
-        </div>
+    <div className="space-y-4">
+      <div className="w-full">
+        <ShiftBoardFilters
+          baseId={baseId}
+          dateYmd={dateYmd}
+          onDateYmd={setDateYmd}
+          shifts={shifts}
+          shiftId={shiftId}
+          onShiftId={setShiftId}
+          departments={departments}
+          projects={projects}
+          selectedDeptIds={selectedDeptIds}
+          selectedProjectIds={selectedProjectIds}
+          onDeptChange={setSelectedDeptIds}
+          onProjectChange={setSelectedProjectIds}
+          search={search}
+          onSearch={setSearch}
+          onClearFilters={onClearFilters}
+          view={view}
+          onView={setView}
+        />
       </div>
 
       {loadError ? (
@@ -321,26 +371,46 @@ export function ShiftBoardPage(): JSX.Element {
       ) : null}
 
       {loading && !board && view === "matrix" ? (
-        <p className="text-xs text-text-secondary">Loading…</p>
+        <ShiftBoardMatrixSkeleton projectCount={skeletonProjectCount} />
       ) : null}
-      {loading && !person && view === "person" ? (
-        <p className="text-xs text-text-secondary">Loading…</p>
+      {loading && view === "person" && !person ? (
+        <ShiftBoardPersonSkeleton projectCount={skeletonProjectCount} />
       ) : null}
 
       {view === "matrix" && board && shiftId != null ? (
         <ShiftBoardMatrix
           board={board}
           search={search}
-          onAssign={setAssignCtx}
-          onRemoveChip={onRemoveChip}
+          onCellAssign={onMatrixCellAssign}
+          onAssignmentClick={onMatrixAssignmentClick}
         />
       ) : null}
 
-      {view === "person" && person && shiftId != null ? (
+      {view === "person" && person && board && shiftId != null ? (
         <ShiftBoardPerson
           data={person}
-          onRemoveAssignment={(assignmentId) => {
-            setConfirmRemove({ assignmentId, label: "this assignment" });
+          search={search}
+          onCreateCell={(e) => {
+            setAssignError(null);
+            setAssignCtx({
+              mode: "createPerson",
+              empId: e.empId,
+              firstName: e.firstName,
+              lastName: e.lastName,
+              departmentId: e.departmentId,
+              projectId: e.projectId,
+              projectName: e.projectName,
+            });
+          }}
+          onEditAssignment={(_emp, a) => {
+            setAssignError(null);
+            setAssignCtx({
+              mode: "editPerson",
+              assignment: a,
+              empId: _emp.empId,
+              firstName: _emp.firstName,
+              lastName: _emp.lastName,
+            });
           }}
         />
       ) : null}
@@ -353,49 +423,13 @@ export function ShiftBoardPage(): JSX.Element {
         }}
         context={assignCtx}
         board={board}
-        onSubmit={submitAssign}
+        onSubmitCreate={submitCreate}
+        onSubmitEdit={submitEdit}
+        onRemove={onRemove}
         error={assignError}
         submitting={assignSubmitting}
+        removing={removing}
       />
-
-      {confirmRemove ? (
-        <div
-          className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40 p-4"
-          role="alertdialog"
-          aria-modal="true"
-          aria-labelledby="confirm-remove-title"
-        >
-          <div className="w-full max-w-sm rounded-card border border-border bg-surface p-5 shadow-lg">
-            <h2
-              id="confirm-remove-title"
-              className="text-base font-semibold text-text-primary"
-            >
-              Remove assignment?
-            </h2>
-            <p className="mt-2 text-sm text-text-secondary">
-              {confirmRemove.label}
-            </p>
-            <div className="mt-4 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setConfirmRemove(null)}
-                className="rounded-input border border-border bg-appbg px-4 py-2 text-sm"
-                disabled={removeSubmitting}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => void doDelete(confirmRemove.assignmentId)}
-                className="rounded-input bg-danger px-4 py-2 text-sm text-white disabled:opacity-50"
-                disabled={removeSubmitting}
-              >
-                {removeSubmitting ? "Removing…" : "Remove"}
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }

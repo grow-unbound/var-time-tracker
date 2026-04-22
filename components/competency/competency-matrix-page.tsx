@@ -828,10 +828,11 @@ export function CompetencyMatrixPage(): JSX.Element {
         </header>
         <div className="w-full lg:ml-auto lg:max-w-[50%]">
           <div className="rounded-card border border-border bg-surface p-3 shadow-card">
-            <div className="flex min-w-0 flex-1 flex-wrap items-end gap-2 lg:justify-end">
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 lg:justify-end">
               <div className="min-w-[140px] max-w-[200px]">
                 <SearchableMultiSelect
                   label="Departments"
+                  labelLayout="inline"
                   options={deptOptions}
                   selectedIds={selectedDeptIds}
                   onChange={setSelectedDeptIds}
@@ -840,6 +841,7 @@ export function CompetencyMatrixPage(): JSX.Element {
               <div className="min-w-[140px] max-w-[200px]">
                 <SearchableMultiSelect
                   label="Shifts"
+                  labelLayout="inline"
                   options={shiftOptions}
                   selectedIds={selectedShiftIds}
                   onChange={setSelectedShiftIds}
@@ -848,6 +850,7 @@ export function CompetencyMatrixPage(): JSX.Element {
               <div className="min-w-[140px] max-w-[200px]">
                 <SearchableMultiSelect
                   label="Activities"
+                  labelLayout="inline"
                   options={activityOptions}
                   selectedIds={selectedActivityIds}
                   onChange={setSelectedActivityIds}
@@ -862,10 +865,10 @@ export function CompetencyMatrixPage(): JSX.Element {
               <button
                 type="button"
                 disabled={!hasNonDefaultFilters}
-                className="mb-0.5 rounded-input border border-border bg-appbg px-3 py-2 text-xs font-medium text-text-secondary hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-40"
+                className="rounded-input border border-border bg-appbg px-3 py-2 text-xs font-medium text-text-secondary hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-40"
                 onClick={onClearFilters}
               >
-                Clear filters
+                Clear
               </button>
             </div>
           </div>
