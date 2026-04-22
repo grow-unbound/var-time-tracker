@@ -353,15 +353,17 @@ Shows who is assigned to what during a specific date and shift. Two views: Matri
 
 ### 3.2 Filters (always visible, top of page)
 
+Toolbar uses a **three-column layout** on medium+ viewports (aligned with Project Planning): **left** — Matrix | Person toggle + search; **center** — date picker + shift toggle (1st / 2nd / 3rd); **right** — Department multi-select, Project multi-select, **Clear** (clears only department/project selections, not search).
+
 | Filter | Control | Behaviour |
 |---|---|---|
 | Date | Date picker | Defaults to today |
 | Shift | Toggle: 1st / 2nd / 3rd | Defaults to current shift based on time |
-| Department | Multi-select | Filters rows in matrix view |
-| Project | Multi-select | Filters columns in matrix view |
-| Employee search | Text input | Highlights all cells containing that employee |
+| Department | Multi-select | Filters matrix rows and person-view employees |
+| Project | Multi-select | Filters matrix columns; also drives **person-view project columns** (same active-project set as matrix) |
+| Search | Text input | **Matrix view:** filters **rows** by department name or activity name (case-insensitive). **Person view:** filters **employees** by first name, last name, or full name. Empty search shows all. |
 
-> Reuse the same filters panel and experience from the other pages - Dashboard and All Entries pages
+> Page shell matches Project Planning: main content lives in a card section (`rounded-card`, kicker + title on the route, body spacing `space-y-4`). Reuse multi-select patterns from Dashboard / All Entries where applicable.
 
 ### 3.3 View A — Matrix View (default)
 
@@ -385,57 +387,69 @@ Shows who is assigned to what during a specific date and shift. Two views: Matri
 ```
 
 **Employee chip:**
-- Avatar circle (initials) + "<first_name> <last_name>"  format (Also show Xh as X hours in this work)
+- Avatar circle (initials) + short label (e.g. first name + hours) in cell
 - Background: department colour (consistent across the app)
-- If employee search is active: matching chips highlighted, non-matching dimmed
+
+**Layout & scroll:**
+- Matrix body uses the same pattern as Project Planning: outer `overflow-x-auto`, inner **flex** with a **sticky left column** (~260px) for “Dept / Activity” and row labels; the **project grid scrolls horizontally** so department/activity labels do not move with the scroll.
 
 **Cell interactions:**
-- Hover on any cell → show a button "Assign Employees" without disturbing layout
-- Click Assign Employees → opens assign modal (select employee from qualified list only)
-- Click existing chip → provide "X" button to open remove confirmation
-- Employee appearing in multiple cells is allowed — shown identically in each cell
-- Ensure employees order by first_name asc, last_name asc to ensure logical sequence of data
+- **Empty cell** (sub-project exists for that project × activity, no assignments yet): **click the cell** → opens assign modal (select employee from qualified list only).
+- **Existing chip:** **click** → opens **edit** modal (adjust hours; **Remove** deletes the assignment). No separate remove-confirmation dialog for chip-only flow.
+- Employee appearing in multiple cells is allowed — shown identically in each cell.
+- Chips ordered by first name, then last name.
 
-**Capacity indicator per employee:**
-When employee search highlights one or more employees (based on query-text), highlight them across cells
+**Search:** filters which **activity rows** appear (department or activity name match); it does not dim individual chips.
 
 ### 3.4 View B — Person View
 
 Activated by toggle: Matrix | Person
 
-**Rows:** Employees (grouped by dept, filtered by dept filter)
-**Columns:** Time slots — simplified as Activity blocks, not clock time
+**Rows:** Employees (grouped by department, filtered by department filter and by **search** on employee name).
+
+**Columns:** **Employee** | **Assigned hours** (total hours this shift) | **one column per project** (same `cols` as matrix for the current date/shift/dept/project filters). Each project cell contains **chips** for assignments in that project only; each chip shows **activity name + duration**. Empty project cell is **clickable** to add an assignment (modal: pick activity for that employee × project, then hours).
+
+**Layout:** Horizontal scroll with **sticky white** left block for Employee + Assigned hours (fixed widths, shadow/border like other matrices); project headers use project colour accents.
+
+**Sorting:** **Inline sort** on column headers **Employee** and **Assigned hours** (toggle asc/desc); no separate “Sort by” dropdown.
 
 ```
-┌──────────────────┬───────────────────────────────────────────────┐
-│ EMPLOYEE         │  ASSIGNMENTS THIS SHIFT                       │
-├──────────────────┼───────────────────────────────────────────────┤
-│ Rajesh Kumar     │ [QRSAM · Stack Assembly] [KONKURS · TIG Weld] │
-│ Suresh Naidu     │ [BAH · Pellet Mfg]                            │
-│ Anitha Reddy     │ [QRSAM · Process QC]     [BAH · Process QC]   │
-│ Venkat Rao       │  — unassigned —                               │
-└──────────────────┴───────────────────────────────────────────────┘
+┌──────────────┬────────┬──────────┬──────────┬──────────┐
+│ EMPLOYEE     │ ASSIGNED HRS │ QRSAM    │ KONKURS  │ BAH      │
+├──────────────┼────────┼──────────┼──────────┼──────────┤
+│ PRODUCTION   │        │          │          │          │
+│ Rajesh Kumar │ 6.5h   │ [Stack..]│ [TIG..]  │          │
+│ Venkat Rao   │ —      │          │          │          │
+└──────────────┴────────┴──────────┴──────────┴──────────┘
 ```
 
-- Show summary of X hours of assignment for each Employee across all Assignments in this Shift (as a separate column next to the employee)
-- Allow sort of the X hours column to allow for eash access to employees with few or no assignments
-- Assignment chips show Project + Activity
-- Unassigned employees shown explicitly — this is the operational alert
-- Chips are colour-coded by Project (consistent project colour across the app)
+- **Assigned hours** column: sum of all assignments for that shift; show **—** when unassigned (no hours).
+- Unassigned employees remain visible — operational signal that they have no work this shift.
+- Chips in project columns are colour-coded by project (same `color_key` / constants as elsewhere).
+
+**Data loading:** The UI loads **matrix** `GET /api/shift-board` whenever filters/date/shift change (even in Person view) so assign-modal qualification / activity options stay consistent with matrix filters.
 
 ### 3.5 Assign Modal
 
-Opened by clicking an empty cell in Matrix view:
+**Matrix — empty cell:** click cell → **Create** modal. Activity and project (and sub-project) are fixed from the cell context.
 
-| Field | Control | Logic |
-|---|---|---|
-| Employee | Dropdown | Filtered to: correct department, has competency for this activity, not already in this cell |
-| Activity | Pre-filled from row | Read-only in context |
-| Project | Pre-filled from column | Read-only in context |
-| #Hours | Hours/Min input | Hours as integers, Minutes as 15/30/45 minutes, Constrianed by total 8hrs 0min per Employee per Shift across all Assignments |
-| Duration | Progress Bar | Show Employee's saved assignments and new addition visually distinct. like Duration field in Add Time Log Entry form |
+**Matrix — chip:** click chip → **Edit** modal: employee and activity implied by the assignment; adjust **hours/minutes**; **Save** (`PATCH`) or **Remove** (`DELETE`).
 
-> Only employees with a valid (non-expired) competency for the selected Activity appear in the dropdown. This is the skills-based assignment enforcement — not visible as a feature, just works.
+**Person — empty project cell:** click → **Create** modal: employee and project fixed; user picks **Activity** from activities that have a sub-project for that project in the employee’s department (options derived from loaded matrix payload). Then hours/minutes; **Save** (`POST`).
+
+**Person — chip:** click → **Edit** modal: same as matrix edit (duration + remove).
+
+| Context | Field | Control | Logic |
+|---|---|---|---|
+| Matrix create | Employee | Dropdown | Qualified for activity, same dept as activity row, not already in this cell |
+| Matrix create | Activity / Project | (context) | Fixed from cell |
+| Person create | Activity | Dropdown | Valid (project × dept) pairs from matrix `rows` / `cells` |
+| Person create | Employee | (context) | Fixed from row |
+| All creates | Hours / Minutes | Selects | 0–8h integer + 0/15/30/45 min; total per employee per shift ≤ 8h |
+| Edit | Hours / Minutes | Selects | Same quarter-hour rules; total ≤ 8h excluding the row being edited |
+| All | Load bar | Progress | Existing vs new/edited duration where applicable |
+
+> Only employees with a valid (non-expired) competency for the selected Activity appear where a dropdown is used. **PATCH** `/api/shift-assignments/:id` updates `duration_hours` only, with the same cap logic as create.
 
 ### 3.6 Contextual Alerts
 
@@ -443,7 +457,7 @@ Shown as row/column headers or inline indicators:
 
 | Alert | Where | Condition |
 |---|---|---|
-| Activity uncovered | Row header (Matrix view) | Cell is empty for an activity that has an active SubProject for that project |
+| Activity uncovered | Matrix (optional / future) | Cell is empty for an activity that has an active SubProject for that project — **no persistent “Uncovered” label in-cell** in current UI; supervisors infer from empty cells |
 | Employee unassigned | Person view | Employee has no assignments for this shift |
 | No qualified worker available | Assign modal | Dropdown is empty after filtering by competency |
 | Over-allocation warning | Tooltip on chip | Employee assigned to > 4 cells in the same shift (proxy for over-allocation without time tracking) |
@@ -451,15 +465,26 @@ Shown as row/column headers or inline indicators:
 ### 3.7 API Routes
 
 ```
-GET  /api/shift-board?date=&shift=&depts=&projects=
-     → returns matrix data: { rows: [dept+activity], cols: [projects], assignments: [] }
+GET  /api/shift-board?date=YYYY-MM-DD&shift=<id>&depts=<comma ids>&projects=<comma ids>
+     → returns matrix data:
+        { rows: [...], cols: [...projects...], cells: [...], assignments: [...],
+          qualifications: [...], shiftDate, shiftId }
 
-GET  /api/shift-board/person-view?date=&shift=&depts=
-     → returns { employees: [{ emp, assignments[], is_unassigned }] }
+GET  /api/shift-board/person-view?date=YYYY-MM-DD&shift=<id>&depts=<comma ids>&projects=<comma ids>
+     → `depts` and `projects` optional; same project filter semantics as matrix for **cols**
+     → returns:
+        { employees: [{ empId, name fields, departmentId, departmentName, totalHours,
+                         isUnassigned, assignments: [...] }],
+          cols: [{ projectId, projectCode, projectName, colorKey }],  // same shape as matrix cols
+          shiftDate, shiftId }
 
 POST /api/shift-assignments
-     → body: { emp_id, sub_project_id, activity_id, shift_date, shift }
-     → validates: competency exists and not expired, not duplicate cell
+     → body: { emp_id, sub_project_id, activity_id, shift_date, shift_id, duration_hours }
+     → validates: competency exists and not expired, not duplicate cell, ≤8h total per emp/shift
+
+PATCH /api/shift-assignments/:assignment_id
+     → body: { duration_hours } (quarter-hour steps, same as POST)
+     → validates: assignment exists; new total per emp/shift ≤ 8h
 
 DELETE /api/shift-assignments/:assignment_id
 ```
@@ -555,18 +580,19 @@ Week/Month view toggle changes column headers and recalculates positions.
 ### Prompt 4 — Production Planning (Shift Board) page
 ```
 Build /shift-board page using v2 spec Section 3.
+Page shell: same card section pattern as /projects (kicker + title + body).
+Toolbar: 3-column grid — (toggle + search) | (date + shift) | (dept + project + Clear).
 Default view: Matrix (rows = dept+activity, columns = projects).
-Person view toggle: rows = employees, chips = assignments.
-Filters: date picker, shift toggle (1/2/3), dept multi-select, 
-project multi-select, employee search text.
-Employee chips: avatar circle (initials) + first name, dept colour.
-Empty cell click → assign modal. Dropdown filtered by competency.
-Chip click → remove confirmation.
-Employee search: highlight matching chips, dim others.
-Unassigned employees shown explicitly in Person view.
-GET /api/shift-board for matrix data.
-POST /api/shift-assignments to assign.
-DELETE /api/shift-assignments/:id to remove.
+Matrix: flex + sticky left label column; horizontal scroll on project grid only.
+Person view: rows = employees; columns = Employee, Assigned hours, then one column per project (cols from API).
+Search: matrix = filter rows by dept/activity name; person = filter employees by name.
+Employee chips (matrix): initials + short label, dept colour.
+Empty matrix cell (assignable) → create assign modal. Chip → edit modal (hours + remove).
+Empty person project cell → create modal with activity dropdown. Chip → edit modal.
+Always fetch GET /api/shift-board when filters change (including in Person view) for modal/board consistency.
+GET /api/shift-board/person-view with same depts+projects query params; response includes cols.
+POST /api/shift-assignments to assign. PATCH /api/shift-assignments/:id for duration. DELETE to remove.
+Person: inline sort on Employee + Assigned hours headers; sticky white label columns.
 ```
 
 ---
@@ -614,7 +640,7 @@ Store the `color_key` in the DB. Render the hex in UI via a constants file.
 - Color is used consistently everywhere that project appears:
   - Gantt bars (Project Planning)
   - Column headers (Shift Board matrix)
-  - Assignment chips (Shift Board person view)
+  - Column headers and assignment chips (Shift Board person view — per-project columns)
   - Chart segments (Dashboard)
 - Store the mapping in a single `PROJECT_COLORS` constant in `lib/constants.ts`, imported wherever colors are needed — never hardcode hex values outside this file
 
@@ -667,7 +693,7 @@ Pass color_key in all project API responses.
 Apply project color consistently using getProjectColor(project.color_key):
 - Gantt bars in /projects (Project Planning)
 - Column headers in /shift-board matrix view
-- Assignment chips in /shift-board person view
+- Column headers and assignment chips in /shift-board person view (project columns)
 - Chart segment colors in the Dashboard
 ```
 

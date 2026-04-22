@@ -77,6 +77,7 @@ export interface ShiftBoardPersonRowDto {
 
 export interface ShiftBoardPersonResponseDto {
   employees: ShiftBoardPersonRowDto[];
+  cols: ShiftBoardColDto[];
   shiftDate: string;
   shiftId: number;
 }

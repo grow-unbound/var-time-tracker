@@ -37,8 +37,32 @@ export async function GET(
     return NextResponse.json({ error: parsed.message }, { status: 400 });
   }
 
-  const { date, shift: shiftId, depts: deptFilter } = parsed.data;
+  const { date, shift: shiftId, depts: deptFilter, projects: projectFilter } =
+    parsed.data;
   const shiftDate = new Date(`${date}T12:00:00.000Z`);
+
+  const projectRows = await prisma.project.findMany({
+    where: {
+      status: "active",
+      ...(projectFilter?.length
+        ? { id: { in: projectFilter } }
+        : {}),
+    },
+    orderBy: { name: "asc" },
+    select: {
+      id: true,
+      name: true,
+      projectCode: true,
+      colorKey: true,
+    },
+  });
+
+  const cols: ShiftBoardPersonResponseDto["cols"] = projectRows.map((p) => ({
+    projectId: p.id,
+    projectCode: p.projectCode,
+    projectName: p.name,
+    colorKey: p.colorKey,
+  }));
 
   const emps = await prisma.employee.findMany({
     where: {
@@ -118,6 +142,7 @@ export async function GET(
 
   return NextResponse.json({
     employees,
+    cols,
     shiftDate: date,
     shiftId,
   });

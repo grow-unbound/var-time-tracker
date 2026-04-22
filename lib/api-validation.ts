@@ -88,6 +88,7 @@ export const shiftBoardPersonQuerySchema = z.object({
   date: dateYmdSchema,
   shift: z.coerce.number().int().positive(),
   depts: commaSeparatedPositiveIdsSchema,
+  projects: commaSeparatedPositiveIdsSchema,
 });
 
 const durationHoursSchema = z
@@ -108,6 +109,10 @@ export const postShiftAssignmentBodySchema = z.object({
   activity_id: z.number().int().positive(),
   shift_date: dateYmdSchema,
   shift_id: z.number().int().positive(),
+  duration_hours: durationHoursSchema,
+});
+
+export const patchShiftAssignmentBodySchema = z.object({
   duration_hours: durationHoursSchema,
 });
 
