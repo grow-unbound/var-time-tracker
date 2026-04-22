@@ -45,3 +45,6 @@ prisma/*.db
 prisma/*.db-journal
 
 /app/generated/prisma
+
+#zip distributable
+var-time-tracker.zip

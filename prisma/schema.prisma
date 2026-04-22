@@ -7,34 +7,72 @@ datasource db {
 }
 
 model Department {
-  id         Int        @id @default(autoincrement()) @map("dept_id")
-  deptCode   String     @unique @map("dept_code")
-  name       String     @unique
-  employees  Employee[]
-  activities Activity[]
+  id           Int         @id @default(autoincrement()) @map("dept_id")
+  deptCode     String      @unique @map("dept_code")
+  name         String      @unique
+  isActive     Boolean     @default(true) @map("is_active")
+  createdAt    DateTime    @default(now()) @map("created_at")
+  updatedAt    DateTime    @default(now()) @updatedAt @map("updated_at")
+  createdById  String      @default("PROJMGMT-001") @map("created_by")
+  updatedById  String      @default("PROJMGMT-001") @map("updated_by")
+  employees    Employee[]
+  activities   Activity[]
+  subProjects  SubProject[]
 
   @@map("departments")
 }
 
 model Shift {
-  id         Int         @id @default(autoincrement()) @map("shift_id")
-  name       String      @unique
-  employees  Employee[]
-  timeEntries TimeEntry[]
+  id               Int              @id @default(autoincrement()) @map("shift_id")
+  name             String           @unique
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @default(now()) @updatedAt @map("updated_at")
+  createdById      String           @default("PROJMGMT-001") @map("created_by")
+  updatedById      String           @default("PROJMGMT-001") @map("updated_by")
+  employees        Employee[]
+  timeEntries      TimeEntry[]
+  shiftAssignments ShiftAssignment[]
 
   @@map("shifts")
 }
 
 model Employee {
-  empId        String      @id @map("emp_id")
-  empCode      String      @unique @map("emp_code")
-  firstName    String      @map("first_name")
-  lastName     String      @map("last_name")
-  departmentId Int         @map("dept_id")
-  shiftId      Int         @map("shift_id")
-  department   Department  @relation(fields: [departmentId], references: [id], onDelete: Restrict, onUpdate: Cascade)
-  shift        Shift       @relation(fields: [shiftId], references: [id], onDelete: Restrict, onUpdate: Cascade)
-  timeEntries  TimeEntry[]
+  empId         String      @id @map("emp_id")
+  empCode       String      @unique @map("emp_code")
+  firstName     String      @map("first_name")
+  lastName      String      @map("last_name")
+  departmentId  Int         @map("dept_id")
+  shiftId       Int         @map("shift_id")
+  isActive      Boolean     @default(true) @map("is_active")
+  createdAt     DateTime    @default(now()) @map("created_at")
+  updatedAt     DateTime    @default(now()) @updatedAt @map("updated_at")
+  /// Audit actor; no self-relation FK to avoid circular inserts during seed.
+  createdById   String      @default("PROJMGMT-001") @map("created_by")
+  updatedById   String      @default("PROJMGMT-001") @map("updated_by")
+  department    Department  @relation(fields: [departmentId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  shift         Shift       @relation(fields: [shiftId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  timeEntries   TimeEntry[]
+  competencies  EmployeeCompetency[]
+  shiftAssignments ShiftAssignment[]
+
+  activitiesCreated   Activity[]    @relation("ActivityCreatedBy")
+  activitiesUpdated   Activity[]    @relation("ActivityUpdatedBy")
+  projectsCreated     Project[]     @relation("ProjectCreatedBy")
+  projectsUpdated     Project[]     @relation("ProjectUpdatedBy")
+  batteryModelsCreated BatteryModel[] @relation("BatteryModelCreatedBy")
+  batteryModelsUpdated BatteryModel[] @relation("BatteryModelUpdatedBy")
+  lotsCreated         Lot[]         @relation("LotCreatedBy")
+  lotsUpdated         Lot[]         @relation("LotUpdatedBy")
+  timeEntriesCreated  TimeEntry[]   @relation("TimeEntryCreatedBy")
+  timeEntriesUpdated  TimeEntry[]   @relation("TimeEntryUpdatedBy")
+  subProjectsCreated  SubProject[]  @relation("SubProjectCreatedBy")
+  subProjectsUpdated  SubProject[]  @relation("SubProjectUpdatedBy")
+  competenciesCreated EmployeeCompetency[] @relation("CompetencyCreatedBy")
+  competenciesUpdated EmployeeCompetency[] @relation("CompetencyUpdatedBy")
+  shiftAssignmentsCreated ShiftAssignment[] @relation("ShiftAssignmentCreatedBy")
+  shiftAssignmentsUpdated ShiftAssignment[] @relation("ShiftAssignmentUpdatedBy")
+  milestonesCreated   Milestone[]   @relation("MilestoneCreatedBy")
+  milestonesUpdated   Milestone[]   @relation("MilestoneUpdatedBy")
 
   @@index([departmentId])
   @@index([shiftId])
@@ -42,11 +80,19 @@ model Employee {
 }
 
 model Activity {
-  id           Int        @id @default(autoincrement()) @map("activity_id")
-  name         String
-  departmentId Int        @map("dept_id")
-  department   Department @relation(fields: [departmentId], references: [id], onDelete: Restrict, onUpdate: Cascade)
-  timeEntries  TimeEntry[]
+  id             Int                  @id @default(autoincrement()) @map("activity_id")
+  name           String
+  departmentId   Int                  @map("dept_id")
+  createdAt      DateTime             @default(now()) @map("created_at")
+  updatedAt      DateTime             @default(now()) @updatedAt @map("updated_at")
+  createdById    String               @default("PROJMGMT-001") @map("created_by")
+  updatedById    String               @default("PROJMGMT-001") @map("updated_by")
+  department     Department           @relation(fields: [departmentId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  timeEntries    TimeEntry[]
+  competencies   EmployeeCompetency[]
+  shiftAssignments ShiftAssignment[]
+  createdBy      Employee             @relation("ActivityCreatedBy", fields: [createdById], references: [empId], onDelete: Restrict, onUpdate: Cascade)
+  updatedBy      Employee             @relation("ActivityUpdatedBy", fields: [updatedById], references: [empId], onDelete: Restrict, onUpdate: Cascade)
 
   @@unique([departmentId, name])
   @@index([departmentId])
@@ -54,14 +100,27 @@ model Activity {
 }
 
 model Project {
-  id            Int           @id @default(autoincrement()) @map("project_id")
-  name          String
-  projectCode   String        @unique @map("project_code")
-  description   String?
-  status        ProjectStatus
-  batteryModels BatteryModel[]
-  lots          Lot[]
-  timeEntries   TimeEntry[]
+  id             Int            @id @default(autoincrement()) @map("project_id")
+  name           String
+  projectCode    String         @unique @map("project_code")
+  colorKey       String         @default("navy") @map("color_key")
+  description    String?
+  status         ProjectStatus
+  plannedStart   DateTime?      @db.Date @map("planned_start")
+  plannedEnd     DateTime?      @db.Date @map("planned_end")
+  actualStart    DateTime?      @db.Date @map("actual_start")
+  actualEnd      DateTime?      @db.Date @map("actual_end")
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @default(now()) @updatedAt @map("updated_at")
+  createdById    String         @default("PROJMGMT-001") @map("created_by")
+  updatedById    String         @default("PROJMGMT-001") @map("updated_by")
+  batteryModels  BatteryModel[]
+  lots           Lot[]
+  timeEntries    TimeEntry[]
+  subProjects    SubProject[]
+  milestones     Milestone[]
+  createdBy      Employee       @relation("ProjectCreatedBy", fields: [createdById], references: [empId], onDelete: Restrict, onUpdate: Cascade)
+  updatedBy      Employee       @relation("ProjectUpdatedBy", fields: [updatedById], references: [empId], onDelete: Restrict, onUpdate: Cascade)
 
   @@map("projects")
 }
@@ -70,9 +129,15 @@ model BatteryModel {
   id          Int         @id @default(autoincrement()) @map("battery_id")
   modelName   String      @map("model_name")
   projectId   Int         @map("project_id")
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @default(now()) @updatedAt @map("updated_at")
+  createdById String      @default("PROJMGMT-001") @map("created_by")
+  updatedById String      @default("PROJMGMT-001") @map("updated_by")
   project     Project     @relation(fields: [projectId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   lots        Lot[]
   timeEntries TimeEntry[]
+  createdBy   Employee    @relation("BatteryModelCreatedBy", fields: [createdById], references: [empId], onDelete: Restrict, onUpdate: Cascade)
+  updatedBy   Employee    @relation("BatteryModelUpdatedBy", fields: [updatedById], references: [empId], onDelete: Restrict, onUpdate: Cascade)
 
   @@unique([projectId, modelName])
   @@index([projectId])
@@ -80,14 +145,20 @@ model BatteryModel {
 }
 
 model Lot {
-  id          Int         @id @default(autoincrement()) @map("lot_id")
-  lotNumber   String      @map("lot_number")
-  batteryId   Int         @map("battery_id")
-  projectId   Int         @map("project_id")
+  id          Int          @id @default(autoincrement()) @map("lot_id")
+  lotNumber   String       @map("lot_number")
+  batteryId   Int          @map("battery_id")
+  projectId   Int          @map("project_id")
   quantity    Int
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @default(now()) @updatedAt @map("updated_at")
+  createdById String       @default("PROJMGMT-001") @map("created_by")
+  updatedById String       @default("PROJMGMT-001") @map("updated_by")
   battery     BatteryModel @relation(fields: [batteryId], references: [id], onDelete: Restrict, onUpdate: Cascade)
-  project     Project     @relation(fields: [projectId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  project     Project      @relation(fields: [projectId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   timeEntries TimeEntry[]
+  createdBy   Employee     @relation("LotCreatedBy", fields: [createdById], references: [empId], onDelete: Restrict, onUpdate: Cascade)
+  updatedBy   Employee     @relation("LotUpdatedBy", fields: [updatedById], references: [empId], onDelete: Restrict, onUpdate: Cascade)
 
   @@unique([batteryId, lotNumber])
   @@index([batteryId])
@@ -107,12 +178,17 @@ model TimeEntry {
   stage           TimeEntryStage
   durationMinutes Int             @map("duration_minutes")
   createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @default(now()) @updatedAt @map("updated_at")
+  createdById     String          @default("PROJMGMT-001") @map("created_by")
+  updatedById     String          @default("PROJMGMT-001") @map("updated_by")
   employee        Employee        @relation(fields: [employeeId], references: [empId], onDelete: Restrict, onUpdate: Cascade)
   shift           Shift           @relation(fields: [shiftId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   activity        Activity        @relation(fields: [activityId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   project         Project         @relation(fields: [projectId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   battery         BatteryModel    @relation(fields: [batteryId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   lot             Lot?            @relation(fields: [lotId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  createdBy       Employee        @relation("TimeEntryCreatedBy", fields: [createdById], references: [empId], onDelete: Restrict, onUpdate: Cascade)
+  updatedBy       Employee        @relation("TimeEntryUpdatedBy", fields: [updatedById], references: [empId], onDelete: Restrict, onUpdate: Cascade)
 
   @@index([employeeId])
   @@index([entryDate])
@@ -124,6 +200,106 @@ model TimeEntry {
   @@map("time_entries")
 }
 
+model SubProject {
+  id                         Int              @id @default(autoincrement()) @map("sub_project_id")
+  projectId                  Int              @map("project_id")
+  departmentId               Int              @map("dept_id")
+  name                       String
+  status                     SubProjectStatus @default(not_started)
+  plannedStart               DateTime?        @db.Date @map("planned_start")
+  plannedEnd                 DateTime?        @db.Date @map("planned_end")
+  actualStart                DateTime?        @db.Date @map("actual_start")
+  actualEnd                  DateTime?        @db.Date @map("actual_end")
+  baselineStart              DateTime?        @db.Date @map("baseline_start")
+  baselineEnd                DateTime?        @db.Date @map("baseline_end")
+  predecessorSubProjectId    Int?             @map("predecessor_sub_project_id")
+  createdAt                  DateTime         @default(now()) @map("created_at")
+  updatedAt                  DateTime         @default(now()) @updatedAt @map("updated_at")
+  createdById                String           @default("PROJMGMT-001") @map("created_by")
+  updatedById                String           @default("PROJMGMT-001") @map("updated_by")
+  project                    Project          @relation(fields: [projectId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  department                 Department       @relation(fields: [departmentId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  predecessor                SubProject?      @relation("SubProjectPredecessor", fields: [predecessorSubProjectId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  dependents                 SubProject[]     @relation("SubProjectPredecessor")
+  shiftAssignments           ShiftAssignment[]
+  milestones                 Milestone[]
+  createdBy                  Employee         @relation("SubProjectCreatedBy", fields: [createdById], references: [empId], onDelete: Restrict, onUpdate: Cascade)
+  updatedBy                  Employee         @relation("SubProjectUpdatedBy", fields: [updatedById], references: [empId], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([projectId, departmentId])
+  @@index([projectId])
+  @@index([departmentId])
+  @@map("sub_projects")
+}
+
+model EmployeeCompetency {
+  id          Int       @id @default(autoincrement()) @map("competency_id")
+  employeeId  String    @map("emp_id")
+  activityId  Int       @map("activity_id")
+  level       Int?
+  activeDate  DateTime  @db.Date @map("active_date")
+  expiryDate  DateTime? @db.Date @map("expiry_date")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at")
+  createdById String    @default("PROJMGMT-001") @map("created_by")
+  updatedById String    @default("PROJMGMT-001") @map("updated_by")
+  employee    Employee  @relation(fields: [employeeId], references: [empId], onDelete: Restrict, onUpdate: Cascade)
+  activity    Activity  @relation(fields: [activityId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  createdBy   Employee  @relation("CompetencyCreatedBy", fields: [createdById], references: [empId], onDelete: Restrict, onUpdate: Cascade)
+  updatedBy   Employee  @relation("CompetencyUpdatedBy", fields: [updatedById], references: [empId], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([employeeId, activityId])
+  @@index([activityId])
+  @@map("employee_competencies")
+}
+
+model ShiftAssignment {
+  id            Int       @id @default(autoincrement()) @map("assignment_id")
+  employeeId    String    @map("emp_id")
+  subProjectId  Int       @map("sub_project_id")
+  activityId    Int       @map("activity_id")
+  shiftDate     DateTime  @db.Date @map("shift_date")
+  shiftId       Int       @map("shift_id")
+  duration      Decimal   @db.Decimal(5, 2)
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @default(now()) @updatedAt @map("updated_at")
+  createdById   String    @default("PROJMGMT-001") @map("created_by")
+  updatedById   String    @default("PROJMGMT-001") @map("updated_by")
+  employee      Employee  @relation(fields: [employeeId], references: [empId], onDelete: Restrict, onUpdate: Cascade)
+  subProject    SubProject @relation(fields: [subProjectId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  activity      Activity  @relation(fields: [activityId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  shift         Shift     @relation(fields: [shiftId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  createdBy     Employee  @relation("ShiftAssignmentCreatedBy", fields: [createdById], references: [empId], onDelete: Restrict, onUpdate: Cascade)
+  updatedBy     Employee  @relation("ShiftAssignmentUpdatedBy", fields: [updatedById], references: [empId], onDelete: Restrict, onUpdate: Cascade)
+
+  @@index([employeeId])
+  @@index([subProjectId])
+  @@index([shiftDate])
+  @@map("shift_assignments")
+}
+
+model Milestone {
+  id           Int             @id @default(autoincrement()) @map("milestone_id")
+  name         String
+  targetDate   DateTime        @db.Date @map("target_date")
+  projectId    Int?            @map("project_id")
+  subProjectId Int?            @map("sub_project_id")
+  status       MilestoneStatus @default(pending)
+  createdAt    DateTime        @default(now()) @map("created_at")
+  updatedAt    DateTime        @default(now()) @updatedAt @map("updated_at")
+  createdById  String          @default("PROJMGMT-001") @map("created_by")
+  updatedById  String          @default("PROJMGMT-001") @map("updated_by")
+  project      Project?        @relation(fields: [projectId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  subProject   SubProject?     @relation(fields: [subProjectId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  createdBy    Employee        @relation("MilestoneCreatedBy", fields: [createdById], references: [empId], onDelete: Restrict, onUpdate: Cascade)
+  updatedBy    Employee        @relation("MilestoneUpdatedBy", fields: [updatedById], references: [empId], onDelete: Restrict, onUpdate: Cascade)
+
+  @@index([projectId])
+  @@index([subProjectId])
+  @@index([targetDate])
+  @@map("milestones")
+}
+
 enum ProjectStatus {
   active
   closed
@@ -132,4 +308,17 @@ enum ProjectStatus {
 enum TimeEntryStage {
   RnD         @map("R&D")
   Production
+}
+
+enum SubProjectStatus {
+  not_started
+  in_progress
+  completed
+  on_hold
+}
+
+enum MilestoneStatus {
+  pending
+  achieved
+  missed
 }

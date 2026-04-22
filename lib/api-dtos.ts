@@ -26,6 +26,55 @@ export interface ProjectDto {
   id: number;
   name: string;
   projectCode: string;
+  colorKey: string;
+}
+
+export type SubProjectStatusDto =
+  | "not_started"
+  | "in_progress"
+  | "completed"
+  | "on_hold";
+
+export type MilestoneStatusDto = "pending" | "achieved" | "missed";
+
+export interface TimelineSubProjectDto {
+  id: number;
+  projectId: number;
+  departmentId: number;
+  departmentName: string;
+  name: string;
+  status: SubProjectStatusDto;
+  plannedStart: string | null;
+  plannedEnd: string | null;
+  baselineStart: string | null;
+  baselineEnd: string | null;
+  actualStart: string | null;
+  actualEnd: string | null;
+  predecessorSubProjectId: number | null;
+  actualMinutes: number;
+  milestones: TimelineMilestoneDto[];
+}
+
+export interface TimelineMilestoneDto {
+  id: number;
+  name: string;
+  targetDate: string;
+  projectId: number | null;
+  subProjectId: number | null;
+  status: MilestoneStatusDto;
+}
+
+export interface TimelineProjectDto {
+  id: number;
+  name: string;
+  projectCode: string;
+  colorKey: string;
+  subProjects: TimelineSubProjectDto[];
+  milestones: TimelineMilestoneDto[];
+}
+
+export interface ProjectsTimelineResponse {
+  projects: TimelineProjectDto[];
 }
 
 export interface BatteryDto {

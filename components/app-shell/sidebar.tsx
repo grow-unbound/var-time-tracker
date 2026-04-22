@@ -74,6 +74,68 @@ const navItems: NavItem[] = [
       </svg>
     ),
   },
+  {
+    href: "/competency",
+    label: "Competency matrix",
+    icon: (
+      <svg
+        aria-hidden="true"
+        className="h-4 w-4 shrink-0"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M12 3v18" />
+        <path d="M3 12h18" />
+        <path d="m7 7 10 10" />
+        <path d="m17 7-10 10" />
+      </svg>
+    ),
+  },
+  {
+    href: "/projects",
+    label: "Project planning",
+    icon: (
+      <svg
+        aria-hidden="true"
+        className="h-4 w-4 shrink-0"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M4 19h16" />
+        <path d="M6 19V9l6-4 6 4v10" />
+        <path d="M10 19v-4h4v4" />
+      </svg>
+    ),
+  },
+  {
+    href: "/shift-board",
+    label: "Production Planning",
+    icon: (
+      <svg
+        aria-hidden="true"
+        className="h-4 w-4 shrink-0"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+        <line x1="16" y1="2" x2="16" y2="6" />
+        <line x1="8" y1="2" x2="8" y2="6" />
+        <line x1="3" y1="10" x2="21" y2="10" />
+      </svg>
+    ),
+  },
 ];
 
 function isActivePath(currentPath: string, href: string): boolean {
