@@ -1,16 +1,20 @@
+/**
+ * 12 distinct categorical colors (revised v2 addendum) for clear separation
+ * in Gantt bars, boards, and charts — avoid near-duplicates (e.g. old coral vs rose).
+ */
 export const PROJECT_COLORS: Record<string, { hex: string; name: string }> = {
-  navy: { hex: "#1B3A5C", name: "Navy" },
-  teal: { hex: "#0F6E56", name: "Teal" },
-  amber: { hex: "#E8A020", name: "Amber" },
-  coral: { hex: "#C0392B", name: "Coral" },
-  violet: { hex: "#6C3483", name: "Violet" },
-  slate: { hex: "#2E86C1", name: "Slate" },
-  forest: { hex: "#1E8449", name: "Forest" },
-  rose: { hex: "#C0395B", name: "Rose" },
-  ochre: { hex: "#B7770D", name: "Ochre" },
-  indigo: { hex: "#3B3F8C", name: "Indigo" },
-  pine: { hex: "#1A5C4A", name: "Pine" },
-  sienna: { hex: "#A04000", name: "Sienna" },
+  navy: { hex: "#1E3A5F", name: "Navy" },
+  teal: { hex: "#14B8A6", name: "Teal" },
+  amber: { hex: "#F59E0B", name: "Amber" },
+  coral: { hex: "#FB923C", name: "Coral" },
+  violet: { hex: "#A855F7", name: "Violet" },
+  slate: { hex: "#64748B", name: "Slate" },
+  forest: { hex: "#22C55E", name: "Forest" },
+  rose: { hex: "#F43F5E", name: "Rose" },
+  ochre: { hex: "#CA8A04", name: "Ochre" },
+  indigo: { hex: "#4F46E5", name: "Indigo" },
+  pine: { hex: "#15803D", name: "Pine" },
+  sienna: { hex: "#C2410C", name: "Sienna" },
 };
 
 export const PROJECT_COLOR_KEYS = Object.keys(PROJECT_COLORS) as string[];

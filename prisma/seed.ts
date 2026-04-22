@@ -33,6 +33,7 @@ import {
   departmentSeeds,
   employeeSeeds,
   lotSeeds,
+  projectColorKeyByCode,
   projectSeeds,
   shiftSeeds,
   timeEntrySeeds,
@@ -131,6 +132,8 @@ async function main(): Promise<void> {
         name: project.name,
         projectCode: project.project_code,
         status: project.status as ProjectStatus,
+        colorKey:
+          projectColorKeyByCode[project.project_code] ?? "navy",
       })),
     });
 

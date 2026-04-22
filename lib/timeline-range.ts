@@ -73,6 +73,64 @@ export function formatYmd(d: Date): string {
   return `${y}-${mo}-${da}`;
 }
 
+const UTC_DAY: Intl.DateTimeFormatOptions = {
+  day: "numeric",
+  month: "short",
+  timeZone: "UTC",
+};
+
+/** e.g. "18 Mar" */
+export function formatFriendlyDayMonthUtc(d: Date): string {
+  return d.toLocaleString("en-GB", UTC_DAY);
+}
+
+/** e.g. "1 Feb – 30 Jun" */
+export function formatInclusiveRangeLabel(
+  start: Date,
+  endInclusive: Date,
+): string {
+  return `${formatFriendlyDayMonthUtc(start)} – ${formatFriendlyDayMonthUtc(endInclusive)}`;
+}
+
+/** First column start when offsetWeeks = 0 (week mode). */
+export function weekTimelineAnchorRangeStart(anchor: Date): Date {
+  const t0 = startOfUtcDay(anchor);
+  return addUtcDays(t0, -28);
+}
+
+/**
+ * Integer offset so getTimelineRange("week", anchor, offset, 0).rangeStart
+ * matches desiredRangeStart (UTC day).
+ */
+export function offsetWeeksForTimelineRangeStart(
+  anchor: Date,
+  desiredRangeStart: Date,
+): number {
+  const base = weekTimelineAnchorRangeStart(anchor);
+  const want = startOfUtcDay(desiredRangeStart);
+  const deltaDays = Math.round(
+    (want.getTime() - base.getTime()) / 86_400_000,
+  );
+  return Math.round(deltaDays / 7);
+}
+
+/**
+ * Integer offset so getTimelineRange("month", anchor, 0, offset).rangeStart
+ * matches startOfUtcMonth(desiredRangeStart).
+ */
+export function offsetMonthsForTimelineRangeStart(
+  anchor: Date,
+  desiredRangeStart: Date,
+): number {
+  const t0 = startOfUtcDay(anchor);
+  const monthAnchor = startOfUtcMonth(t0);
+  const M = startOfUtcMonth(startOfUtcDay(desiredRangeStart));
+  const diff =
+    (M.getUTCFullYear() - monthAnchor.getUTCFullYear()) * 12 +
+    (M.getUTCMonth() - monthAnchor.getUTCMonth());
+  return diff + 1;
+}
+
 /** Column label for header row */
 export function columnLabels(
   mode: TimelineViewMode,
@@ -82,7 +140,7 @@ export function columnLabels(
   if (mode === "week") {
     return Array.from({ length: columnCount }, (_, i) => {
       const wk = addUtcDays(rangeStart, i * 7);
-      return `W${i + 1} · ${formatYmd(wk).slice(5)}`;
+      return formatFriendlyDayMonthUtc(wk);
     });
   }
   return Array.from({ length: columnCount }, (_, i) => {

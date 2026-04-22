@@ -590,18 +590,20 @@ Store the `color_key` in the DB. Render the hex in UI via a constants file.
 
 | Key | Hex | Name |
 |---|---|---|
-| `navy` | `#1B3A5C` | Navy |
-| `teal` | `#0F6E56` | Teal |
-| `amber` | `#E8A020` | Amber |
-| `coral` | `#C0392B` | Coral |
-| `violet` | `#6C3483` | Violet |
-| `slate` | `#2E86C1` | Slate |
-| `forest` | `#1E8449` | Forest |
-| `rose` | `#C0395B` | Rose |
-| `ochre` | `#B7770D` | Ochre |
-| `indigo` | `#3B3F8C` | Indigo |
-| `pine` | `#1A5C4A` | Pine |
-| `sienna` | `#A04000` | Sienna |
+| `navy` | `#1E3A5F` | Navy |
+| `teal` | `#14B8A6` | Teal |
+| `amber` | `#F59E0B` | Amber |
+| `coral` | `#FB923C` | Coral |
+| `violet` | `#A855F7` | Violet |
+| `slate` | `#64748B` | Slate |
+| `forest` | `#22C55E` | Forest |
+| `rose` | `#F43F5E` | Rose |
+| `ochre` | `#CA8A04` | Ochre |
+| `indigo` | `#4F46E5` | Indigo |
+| `pine` | `#15803D` | Pine |
+| `sienna` | `#C2410C` | Sienna |
+
+*Palette revised for maximal visual separation between keys (especially coral vs rose, teal vs pine). Hex values are defined only in `lib/constants.ts`.*
 
 ---
 
@@ -623,18 +625,18 @@ Store the `color_key` in the DB. Render the hex in UI via a constants file.
 ```ts
 // lib/constants.ts
 export const PROJECT_COLORS: Record<string, { hex: string; name: string }> = {
-  navy:   { hex: '#1B3A5C', name: 'Navy' },
-  teal:   { hex: '#0F6E56', name: 'Teal' },
-  amber:  { hex: '#E8A020', name: 'Amber' },
-  coral:  { hex: '#C0392B', name: 'Coral' },
-  violet: { hex: '#6C3483', name: 'Violet' },
-  slate:  { hex: '#2E86C1', name: 'Slate' },
-  forest: { hex: '#1E8449', name: 'Forest' },
-  rose:   { hex: '#C0395B', name: 'Rose' },
-  ochre:  { hex: '#B7770D', name: 'Ochre' },
-  indigo: { hex: '#3B3F8C', name: 'Indigo' },
-  pine:   { hex: '#1A5C4A', name: 'Pine' },
-  sienna: { hex: '#A04000', name: 'Sienna' },
+  navy:   { hex: '#1E3A5F', name: 'Navy' },
+  teal:   { hex: '#14B8A6', name: 'Teal' },
+  amber:  { hex: '#F59E0B', name: 'Amber' },
+  coral:  { hex: '#FB923C', name: 'Coral' },
+  violet: { hex: '#A855F7', name: 'Violet' },
+  slate:  { hex: '#64748B', name: 'Slate' },
+  forest: { hex: '#22C55E', name: 'Forest' },
+  rose:   { hex: '#F43F5E', name: 'Rose' },
+  ochre:  { hex: '#CA8A04', name: 'Ochre' },
+  indigo: { hex: '#4F46E5', name: 'Indigo' },
+  pine:   { hex: '#15803D', name: 'Pine' },
+  sienna: { hex: '#C2410C', name: 'Sienna' },
 };
 
 export const DEFAULT_PROJECT_COLOR = 'navy';

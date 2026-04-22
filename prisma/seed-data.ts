@@ -129,6 +129,21 @@ export const projectSeeds = [
   { project_code: "MICA", name: "MICA", status: "active" }
 ] as const;
 
+/** Distinct `color_key` per seed project (maps to `lib/constants.ts` palette). */
+export const projectColorKeyByCode: Record<string, string> = {
+  ELBIT: "navy",
+  "PJ-10": "teal",
+  KONKURS: "amber",
+  VEDA: "coral",
+  ANSP: "violet",
+  QRSAM: "slate",
+  NASM: "forest",
+  MAHINDRA: "rose",
+  MIRV: "ochre",
+  BAH: "indigo",
+  MICA: "pine",
+};
+
 export const batteryModelSeeds = [
   { model_name: "ELBIT", project_code: "ELBIT" },
   { model_name: "PJ-10", project_code: "PJ-10" },

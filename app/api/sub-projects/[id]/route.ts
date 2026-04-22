@@ -1,4 +1,3 @@
-import { SubProjectStatus } from "@prisma/client";
 import { NextResponse } from "next/server";
 
 import { parseJsonBody } from "@/lib/api-validation";
@@ -107,7 +106,6 @@ export async function PATCH(
     );
   }
 
-  const nextStatus = status ?? prev.status;
   const mergedStart =
     plannedStart !== undefined
       ? plannedStart === null
@@ -121,15 +119,13 @@ export async function PATCH(
         : ymdToDate(plannedEnd)
       : prev.plannedEnd;
 
-  const transitioningToInProgress =
-    prev.status === SubProjectStatus.not_started &&
-    nextStatus === SubProjectStatus.in_progress;
-
-  const shouldSnapshotBaseline =
-    prev.baselineStart === null &&
-    transitioningToInProgress &&
-    mergedStart !== null &&
-    mergedEnd !== null;
+  const plannedFieldsTouched =
+    plannedStart !== undefined || plannedEnd !== undefined;
+  const baselineSync =
+    plannedFieldsTouched &&
+    (mergedStart !== null && mergedEnd !== null
+      ? { baselineStart: mergedStart, baselineEnd: mergedEnd }
+      : { baselineStart: null, baselineEnd: null });
 
   await prisma.subProject.update({
     where: { id },
@@ -149,9 +145,7 @@ export async function PATCH(
       ...(predecessorSubProjectId !== undefined
         ? { predecessorSubProjectId }
         : {}),
-      ...(shouldSnapshotBaseline
-        ? { baselineStart: mergedStart, baselineEnd: mergedEnd }
-        : {}),
+      ...(plannedFieldsTouched ? baselineSync : {}),
       updatedById: AUDIT,
     },
   });

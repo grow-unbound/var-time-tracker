@@ -1,6 +1,13 @@
 import { z } from "zod";
 
 import { dateYmdSchema } from "@/lib/api-validation";
+import { PROJECT_COLORS } from "@/lib/constants";
+
+const projectColorKeySchema = z
+  .string()
+  .refine((k) => Object.prototype.hasOwnProperty.call(PROJECT_COLORS, k), {
+    message: "Invalid color key",
+  });
 
 export const subProjectStatusSchema = z.enum([
   "not_started",
@@ -26,6 +33,12 @@ export const postProjectBodySchema = z.object({
   description: z.string().max(2000).optional(),
   plannedStart: dateYmdSchema.optional(),
   plannedEnd: dateYmdSchema.optional(),
+  colorKey: projectColorKeySchema.optional(),
+});
+
+export const patchProjectBodySchema = z.object({
+  name: z.string().min(1).max(200).optional(),
+  colorKey: projectColorKeySchema.optional(),
 });
 
 export const postMilestoneBodySchema = z

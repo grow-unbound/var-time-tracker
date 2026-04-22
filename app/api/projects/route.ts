@@ -43,13 +43,16 @@ export async function POST(
     return NextResponse.json({ error: parsed.message }, { status: 400 });
   }
 
-  const { name, projectCode, description, plannedStart, plannedEnd } = parsed.data;
+  const { name, projectCode, description, plannedStart, plannedEnd, colorKey: bodyColorKey } =
+    parsed.data;
 
   const usedColors = await prisma.project.findMany({
     where: { status: ProjectStatus.active },
     select: { colorKey: true },
   });
-  const colorKey = pickNextProjectColorKey(usedColors.map((p) => p.colorKey));
+  const colorKey =
+    bodyColorKey ??
+    pickNextProjectColorKey(usedColors.map((p) => p.colorKey));
 
   try {
     const project = await prisma.$transaction(async (tx) => {

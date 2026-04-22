@@ -1,7 +1,16 @@
 "use client";
 
-import type { JSX } from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import type { JSX, MouseEvent, ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { createPortal } from "react-dom";
+
+import { Skeleton } from "@/components/ui/skeleton";
 
 import type {
   ProjectsTimelineResponse,
@@ -10,17 +19,30 @@ import type {
   TimelineProjectDto,
   TimelineSubProjectDto,
 } from "@/lib/api-dtos";
-import { getProjectColor } from "@/lib/constants";
+import {
+  getProjectColor,
+  pickNextProjectColorKey,
+  PROJECT_COLOR_KEYS,
+  PROJECT_COLORS,
+} from "@/lib/constants";
 import {
   barLayoutForRange,
   percentForDateInRange,
   plannedHoursFromYmd,
 } from "@/lib/timeline-geometry";
 import {
+  addUtcDays,
+  addUtcMonths,
   columnLabels,
+  formatFriendlyDayMonthUtc,
+  formatInclusiveRangeLabel,
   formatYmd,
   getTimelineRange,
+  offsetMonthsForTimelineRangeStart,
+  offsetWeeksForTimelineRangeStart,
+  parseYmdToUtcMidnight,
   startOfUtcDay,
+  startOfUtcMonth,
   type TimelineViewMode,
 } from "@/lib/timeline-range";
 
@@ -120,39 +142,153 @@ function projectAlert(
   return best;
 }
 
-function AlertDot({ kind }: { kind: AlertKind }): JSX.Element {
-  const cls =
-    kind === "overdue"
-      ? "bg-danger"
-      : kind === "slipped"
-        ? "bg-accent"
-        : kind === "no_dates"
-          ? "bg-border"
-          : kind === "on_track"
-            ? "bg-success"
-            : "bg-text-secondary/40";
-  return (
-    <span
-      className={`inline-block h-2 w-2 shrink-0 rounded-full ${cls}`}
-      title={kind}
-      aria-hidden
-    />
-  );
+function projectAlertLabel(kind: AlertKind): string {
+  switch (kind) {
+    case "overdue":
+      return "Overdue";
+    case "slipped":
+      return "Slipped";
+    case "no_dates":
+      return "Not planned";
+    case "on_track":
+      return "On track";
+    case "neutral":
+    default:
+      return "—";
+  }
+}
+
+function subStatusLabel(status: SubProjectStatusDto): string {
+  switch (status) {
+    case "not_started":
+      return "Not started";
+    case "in_progress":
+      return "In progress";
+    case "completed":
+      return "Completed";
+    case "on_hold":
+      return "On hold";
+    default:
+      return status;
+  }
+}
+
+function displaySubProjectName(
+  projectName: string,
+  subFullName: string,
+): string {
+  const prefix = `${projectName} — `;
+  if (subFullName.startsWith(prefix)) {
+    return subFullName.slice(prefix.length);
+  }
+  return subFullName;
+}
+
+function hexWithAlpha(hex: string, alpha: number): string {
+  const h = hex.replace("#", "");
+  if (h.length !== 6) {
+    return `rgba(0,0,0,${alpha})`;
+  }
+  const r = Number.parseInt(h.slice(0, 2), 16);
+  const g = Number.parseInt(h.slice(2, 4), 16);
+  const b = Number.parseInt(h.slice(4, 6), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+/** Project / timeline row tint using palette hex (visible on white surface). */
+const PROJECT_ROW_TINT_ALPHA = 0.14;
+
+function pickerEndYmdFromStart(
+  startYmd: string,
+  mode: TimelineViewMode,
+): string {
+  const d = parseYmdToUtcMidnight(startYmd);
+  if (mode === "week") {
+    return formatYmd(addUtcDays(d, 13 * 7 - 1));
+  }
+  const m = startOfUtcMonth(d);
+  return formatYmd(addUtcDays(addUtcMonths(m, 6), -1));
+}
+
+/** Two calendar months inclusive: e.g. Jun 1 → Jul 31. */
+function twoMonthSpanYmdsFromMonthStart(monthStart: Date): {
+  startYmd: string;
+  endYmd: string;
+} {
+  const start = startOfUtcMonth(monthStart);
+  const endInclusive = addUtcDays(addUtcMonths(start, 2), -1);
+  return { startYmd: formatYmd(start), endYmd: formatYmd(endInclusive) };
+}
+
+function columnMonthStartForSpan(
+  mode: TimelineViewMode,
+  timelineRangeStart: Date,
+  colIndex: number,
+): Date {
+  if (mode === "month") {
+    return addUtcMonths(timelineRangeStart, colIndex);
+  }
+  const weekStart = addUtcDays(timelineRangeStart, colIndex * 7);
+  return startOfUtcMonth(weekStart);
 }
 
 function subStatusBarClass(status: SubProjectStatusDto): string {
   switch (status) {
     case "not_started":
-      return "bg-border";
+      return "border border-text-secondary/35 bg-text-secondary/12";
     case "in_progress":
-      return "bg-primary";
+      return "border border-primary/45 bg-primary/22";
     case "completed":
-      return "bg-success";
+      return "border border-success/45 bg-success/22";
     case "on_hold":
-      return "bg-accent";
+      return "border border-accent/40 bg-accent/18";
     default:
-      return "bg-border";
+      return "border border-text-secondary/35 bg-text-secondary/12";
   }
+}
+
+function TimelineTooltip({
+  tip,
+  children,
+}: {
+  tip: ReactNode;
+  children: ReactNode;
+}): JSX.Element {
+  const [open, setOpen] = useState(false);
+  const [coords, setCoords] = useState({ x: 0, y: 0 });
+
+  const onMove = (e: MouseEvent<HTMLSpanElement>): void => {
+    setCoords({ x: e.clientX, y: e.clientY });
+  };
+
+  return (
+    <span
+      className="contents"
+      onMouseEnter={(e) => {
+        setOpen(true);
+        setCoords({ x: e.clientX, y: e.clientY });
+      }}
+      onMouseMove={onMove}
+      onMouseLeave={() => setOpen(false)}
+    >
+      {children}
+      {open
+        ? createPortal(
+            <div
+              className="pointer-events-none fixed z-[9999] max-w-[280px] rounded-md border border-border bg-white px-3 py-2 text-left text-xs leading-snug text-text-primary shadow-card"
+              style={{
+                left: coords.x + 14,
+                top: coords.y + 14,
+              }}
+              role="tooltip"
+            >
+              {tip}
+            </div>,
+            document.body,
+          )
+        : null}
+    </span>
+  );
 }
 
 function milestoneDisplayStatus(
@@ -179,9 +315,25 @@ function milestoneColor(
   return "#E8A020";
 }
 
+function milestoneStatusTip(
+  m: TimelineMilestoneDto,
+  todayYmd: string,
+): string {
+  const s = milestoneDisplayStatus(m, todayYmd);
+  if (s === "achieved") {
+    return "Achieved";
+  }
+  if (s === "missed") {
+    return "Missed";
+  }
+  return "Pending";
+}
+
 interface SubProjectEditModalProps {
   sub: TimelineSubProjectDto;
   siblings: TimelineSubProjectDto[];
+  initialPlannedStart?: string;
+  initialPlannedEnd?: string;
   onClose: () => void;
   onSaved: () => void;
 }
@@ -189,12 +341,18 @@ interface SubProjectEditModalProps {
 function SubProjectEditModal({
   sub,
   siblings,
+  initialPlannedStart,
+  initialPlannedEnd,
   onClose,
   onSaved,
 }: SubProjectEditModalProps): JSX.Element {
   const [status, setStatus] = useState<SubProjectStatusDto>(sub.status);
-  const [plannedStart, setPlannedStart] = useState(sub.plannedStart ?? "");
-  const [plannedEnd, setPlannedEnd] = useState(sub.plannedEnd ?? "");
+  const [plannedStart, setPlannedStart] = useState(
+    () => initialPlannedStart ?? sub.plannedStart ?? "",
+  );
+  const [plannedEnd, setPlannedEnd] = useState(
+    () => initialPlannedEnd ?? sub.plannedEnd ?? "",
+  );
   const [pred, setPred] = useState<string>(
     sub.predecessorSubProjectId != null
       ? String(sub.predecessorSubProjectId)
@@ -212,6 +370,17 @@ function SubProjectEditModal({
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
+
+  useEffect(() => {
+    setPlannedStart(initialPlannedStart ?? sub.plannedStart ?? "");
+    setPlannedEnd(initialPlannedEnd ?? sub.plannedEnd ?? "");
+  }, [
+    sub.id,
+    sub.plannedStart,
+    sub.plannedEnd,
+    initialPlannedStart,
+    initialPlannedEnd,
+  ]);
 
   const submit = async (): Promise<void> => {
     setSaving(true);
@@ -340,6 +509,7 @@ function SubProjectEditModal({
 interface MilestoneModalProps {
   mode: "create" | "edit";
   milestoneId?: number;
+  projects?: TimelineProjectDto[];
   initial?: Partial<{
     name: string;
     targetDate: string;
@@ -354,17 +524,33 @@ interface MilestoneModalProps {
 function MilestoneModal({
   mode,
   milestoneId,
+  projects,
   initial,
   onClose,
   onSaved,
 }: MilestoneModalProps): JSX.Element {
+  const firstProjectId = projects?.[0]?.id ?? 0;
   const [name, setName] = useState(initial?.name ?? "");
   const [targetDate, setTargetDate] = useState(initial?.targetDate ?? "");
   const [status, setStatus] = useState<TimelineMilestoneDto["status"]>(
     initial?.status ?? "pending",
   );
+  const [selProjectId, setSelProjectId] = useState<number>(
+    initial?.projectId ?? firstProjectId,
+  );
+  const [selSubScope, setSelSubScope] = useState<number | "project">(
+    initial?.subProjectId != null ? initial.subProjectId : "project",
+  );
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  const useProjectPickers =
+    mode === "create" && projects != null && projects.length > 0;
+
+  const selectedProject = useMemo(
+    () => projects?.find((p) => p.id === selProjectId),
+    [projects, selProjectId],
+  );
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
@@ -380,6 +566,35 @@ function MilestoneModal({
     setSaving(true);
     setErr(null);
     if (mode === "create") {
+      let projectId: number | null = null;
+      let subProjectId: number | null = null;
+      if (useProjectPickers) {
+        if (!selProjectId) {
+          setSaving(false);
+          setErr("Select a project");
+          return;
+        }
+        const p = projects!.find((x) => x.id === selProjectId);
+        if (!p) {
+          setSaving(false);
+          setErr("Invalid project");
+          return;
+        }
+        if (selSubScope === "project") {
+          projectId = selProjectId;
+        } else {
+          const sub = p.subProjects.find((s) => s.id === selSubScope);
+          if (!sub) {
+            setSaving(false);
+            setErr("Sub-project does not belong to the selected project");
+            return;
+          }
+          subProjectId = selSubScope;
+        }
+      } else {
+        projectId = initial?.projectId ?? null;
+        subProjectId = initial?.subProjectId ?? null;
+      }
       const res = await fetch("/api/milestones", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -387,8 +602,8 @@ function MilestoneModal({
           name,
           targetDate,
           status,
-          projectId: initial?.projectId ?? null,
-          subProjectId: initial?.subProjectId ?? null,
+          projectId,
+          subProjectId,
         }),
       });
       setSaving(false);
@@ -426,10 +641,10 @@ function MilestoneModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="ms-title"
-        className="fixed left-1/2 top-1/2 z-50 w-[min(100vw-2rem,400px)] -translate-x-1/2 -translate-y-1/2 rounded-card border border-border bg-surface p-6 shadow-card"
+        className="fixed left-1/2 top-1/2 z-50 w-[min(100vw-2rem,440px)] -translate-x-1/2 -translate-y-1/2 rounded-card border border-border bg-surface p-6 shadow-card"
       >
         <h2 id="ms-title" className="text-base font-semibold text-text-primary">
-          {mode === "create" ? "New milestone" : "Edit milestone"}
+          {mode === "create" ? "New Milestone" : "Edit Milestone"}
         </h2>
         <div className="mt-4 space-y-3">
           <label className="block text-sm text-text-secondary">
@@ -440,6 +655,48 @@ function MilestoneModal({
               className="mt-1 w-full rounded-input border border-border px-3 py-2 text-sm"
             />
           </label>
+          {useProjectPickers ? (
+            <>
+              <label className="block text-sm text-text-secondary">
+                Project
+                <select
+                  value={String(selProjectId)}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    setSelProjectId(v);
+                    setSelSubScope("project");
+                  }}
+                  className="mt-1 w-full rounded-input border border-border px-3 py-2 text-sm text-text-primary"
+                >
+                  {projects!.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block text-sm text-text-secondary">
+                Sub-project
+                <select
+                  value={
+                    selSubScope === "project" ? "" : String(selSubScope)
+                  }
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setSelSubScope(v === "" ? "project" : Number(v));
+                  }}
+                  className="mt-1 w-full rounded-input border border-border px-3 py-2 text-sm text-text-primary"
+                >
+                  <option value="">Select Department</option>
+                  {selectedProject?.subProjects.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {displaySubProjectName(selectedProject.name, s.name)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </>
+          ) : null}
           <label className="block text-sm text-text-secondary">
             Target date
             <input
@@ -491,12 +748,169 @@ function MilestoneModal({
   );
 }
 
+function ProjectColorSwatchRow({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (key: string) => void;
+}): JSX.Element {
+  return (
+    <div className="space-y-2">
+      <span className="block text-sm text-text-secondary">Color</span>
+      <div className="flex flex-wrap gap-2">
+        {PROJECT_COLOR_KEYS.map((key) => {
+          const meta = PROJECT_COLORS[key];
+          if (!meta) {
+            return null;
+          }
+          const selected = value === key;
+          return (
+            <button
+              key={key}
+              type="button"
+              title={meta.name}
+              aria-label={`${meta.name}${selected ? ", selected" : ""}`}
+              aria-pressed={selected}
+              className={`relative flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition-transform active:scale-95 ${
+                selected
+                  ? "border-text-primary ring-2 ring-text-primary/30"
+                  : "border-white/70 shadow-sm ring-1 ring-black/10"
+              }`}
+              style={{ backgroundColor: meta.hex }}
+              onClick={() => onChange(key)}
+            >
+              {selected ? (
+                <span className="pointer-events-none text-[10px] font-bold leading-none text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.65)]">
+                  ✓
+                </span>
+              ) : null}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+interface EditProjectModalProps {
+  project: TimelineProjectDto;
+  onClose: () => void;
+  onSaved: () => void;
+}
+
+function EditProjectModal({
+  project,
+  onClose,
+  onSaved,
+}: EditProjectModalProps): JSX.Element {
+  const [name, setName] = useState(project.name);
+  const [colorKey, setColorKey] = useState(project.colorKey);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === "Escape") {
+        onClose();
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  useEffect(() => {
+    setName(project.name);
+    setColorKey(project.colorKey);
+  }, [project.id, project.name, project.colorKey]);
+
+  const submit = async (): Promise<void> => {
+    setSaving(true);
+    setErr(null);
+    const res = await fetch(`/api/projects/${project.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: name.trim(),
+        colorKey,
+      }),
+    });
+    setSaving(false);
+    if (!res.ok) {
+      const j = (await res.json()) as { error?: string };
+      setErr(j.error ?? "Save failed");
+      return;
+    }
+    onSaved();
+    onClose();
+  };
+
+  return (
+    <>
+      <button
+        type="button"
+        aria-label="Close"
+        className="fixed inset-0 z-40 bg-black/40"
+        onClick={onClose}
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="ep-title"
+        className="fixed left-1/2 top-1/2 z-50 w-[min(100vw-2rem,420px)] -translate-x-1/2 -translate-y-1/2 rounded-card border border-border bg-surface p-6 shadow-card"
+      >
+        <h2 id="ep-title" className="text-base font-semibold text-text-primary">
+          Edit Project
+        </h2>
+        <p className="mt-1 font-mono text-xs text-text-secondary">
+          {project.projectCode}
+        </p>
+        <div className="mt-4 space-y-3">
+          <label className="block text-sm text-text-secondary">
+            Name
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="mt-1 w-full rounded-input border border-border px-3 py-2 text-sm"
+            />
+          </label>
+          <ProjectColorSwatchRow value={colorKey} onChange={setColorKey} />
+        </div>
+        {err ? (
+          <p className="mt-3 text-sm text-danger" role="alert">
+            {err}
+          </p>
+        ) : null}
+        <div className="mt-6 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-input border border-border px-4 py-2 text-sm active:scale-[0.97]"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={saving || !name.trim()}
+            onClick={() => void submit()}
+            className="rounded-input bg-primary px-4 py-2 text-sm font-medium text-white active:scale-[0.97] disabled:opacity-50"
+          >
+            {saving ? "Saving…" : "Save"}
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
 interface NewProjectModalProps {
+  usedColorKeys: string[];
   onClose: () => void;
   onCreated: () => void;
 }
 
 function NewProjectModal({
+  usedColorKeys,
   onClose,
   onCreated,
 }: NewProjectModalProps): JSX.Element {
@@ -504,6 +918,9 @@ function NewProjectModal({
   const [projectCode, setProjectCode] = useState("");
   const [plannedStart, setPlannedStart] = useState("");
   const [plannedEnd, setPlannedEnd] = useState("");
+  const [colorKey, setColorKey] = useState(() =>
+    pickNextProjectColorKey(usedColorKeys),
+  );
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -530,6 +947,7 @@ function NewProjectModal({
     if (plannedEnd) {
       body.plannedEnd = plannedEnd;
     }
+    body.colorKey = colorKey;
     const res = await fetch("/api/projects", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -560,7 +978,7 @@ function NewProjectModal({
         className="fixed left-1/2 top-1/2 z-50 w-[min(100vw-2rem,420px)] -translate-x-1/2 -translate-y-1/2 rounded-card border border-border bg-surface p-6 shadow-card"
       >
         <h2 id="np-title" className="text-base font-semibold text-text-primary">
-          New project
+          New Project
         </h2>
         <div className="mt-4 space-y-3">
           <label className="block text-sm text-text-secondary">
@@ -579,6 +997,7 @@ function NewProjectModal({
               className="mt-1 w-full rounded-input border border-border px-3 py-2 font-mono text-sm uppercase"
             />
           </label>
+          <ProjectColorSwatchRow value={colorKey} onChange={setColorKey} />
           <label className="block text-sm text-text-secondary">
             Planned start (optional)
             <input
@@ -738,6 +1157,21 @@ export function ProjectPlanningView(): JSX.Element {
     null,
   );
   const [newProjectOpen, setNewProjectOpen] = useState(false);
+  const [editProject, setEditProject] = useState<TimelineProjectDto | null>(
+    null,
+  );
+  const [rangeMenuOpen, setRangeMenuOpen] = useState(false);
+  const [pickRangeStart, setPickRangeStart] = useState("");
+  const [pickRangeEnd, setPickRangeEnd] = useState("");
+  const rangeMenuRef = useRef<HTMLDivElement>(null);
+  const [emptyDatesHover, setEmptyDatesHover] = useState<{
+    subId: number;
+    col: number;
+  } | null>(null);
+  const [editPlannedPreset, setEditPlannedPreset] = useState<{
+    start: string;
+    end: string;
+  } | null>(null);
 
   const load = useCallback(async (): Promise<void> => {
     setLoadErr(null);
@@ -756,6 +1190,33 @@ export function ProjectPlanningView(): JSX.Element {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (!rangeMenuOpen) {
+      return;
+    }
+    const onDoc = (e: Event): void => {
+      if (
+        rangeMenuRef.current &&
+        !rangeMenuRef.current.contains(e.target as Node)
+      ) {
+        setRangeMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [rangeMenuOpen]);
+
+  useEffect(() => {
+    if (!pickRangeStart) {
+      return;
+    }
+    try {
+      setPickRangeEnd(pickerEndYmdFromStart(pickRangeStart, viewMode));
+    } catch {
+      /* invalid */
+    }
+  }, [pickRangeStart, viewMode]);
 
   const anchor = useMemo(() => startOfUtcDay(new Date()), []);
   const todayYmd = useMemo(() => formatYmd(anchor), [anchor]);
@@ -836,11 +1297,15 @@ export function ProjectPlanningView(): JSX.Element {
           pct: percentForDateInRange(m.targetDate, rangeStart, rangeEndInclusive),
         }))
         .filter((x): x is { m: TimelineMilestoneDto; pct: number } => x.pct != null);
+      const spanTip =
+        start && end
+          ? `${formatFriendlyDayMonthUtc(parseYmdToUtcMidnight(start))} – ${formatFriendlyDayMonthUtc(parseYmdToUtcMidnight(end))}`
+          : "No span (sub-projects lack dates)";
 
       return (
         <div
           key={`p-${p.id}-${rowIdx}`}
-          className="relative grid min-h-[44px] border-b border-border"
+          className="relative grid min-h-[44px] border-b border-border bg-white"
           style={{
             gridTemplateColumns: gridCols,
           }}
@@ -855,50 +1320,78 @@ export function ProjectPlanningView(): JSX.Element {
           </div>
           <div className="relative z-[2] col-span-full flex items-center px-0">
             {layout ? (
-              <div
-                className="absolute h-2 rounded-full"
-                style={{
-                  left: `${layout.leftPct}%`,
-                  width: `${layout.widthPct}%`,
-                  backgroundColor: barHex,
-                }}
-                title={`${p.name}`}
-              />
+              <TimelineTooltip
+                tip={
+                  <div className="space-y-1">
+                    <div className="font-medium text-text-primary">{p.name}</div>
+                    <div className="text-text-secondary">{spanTip}</div>
+                    <div className="text-text-secondary">
+                      Roll-up of sub-project planned dates
+                    </div>
+                  </div>
+                }
+              >
+                <div
+                  className="absolute top-1/2 h-4 -translate-y-1/2 cursor-default rounded-full"
+                  style={{
+                    left: `${layout.leftPct}%`,
+                    width: `${layout.widthPct}%`,
+                    backgroundColor: barHex,
+                  }}
+                />
+              </TimelineTooltip>
             ) : null}
             {projMs.map(({ m, pct }) => (
-              <button
+              <TimelineTooltip
                 key={m.id}
-                type="button"
-                className="absolute z-20 -translate-x-1/2 cursor-pointer border-0 bg-transparent p-0"
-                style={{
-                  left: `${pct}%`,
-                  top: "50%",
-                  transform: "translate(-50%, -50%) rotate(45deg)",
-                }}
-                title={`${m.name} · ${m.targetDate}`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setMilestoneModal({
-                    mode: "edit",
-                    milestoneId: m.id,
-                    initial: {
-                      name: m.name,
-                      targetDate: m.targetDate,
-                      status: m.status,
-                    },
-                    onClose: () => setMilestoneModal(null),
-                    onSaved: () => void load(),
-                  });
-                }}
+                tip={
+                  <div className="space-y-1">
+                    <div className="font-medium">{m.name}</div>
+                    <div className="text-text-secondary">
+                      Target:{" "}
+                      {formatFriendlyDayMonthUtc(
+                        parseYmdToUtcMidnight(m.targetDate),
+                      )}{" "}
+                      ({m.targetDate})
+                    </div>
+                    <div className="text-text-secondary">
+                      {milestoneStatusTip(m, todayYmd)}
+                    </div>
+                  </div>
+                }
               >
-                <span
-                  className="block h-2.5 w-2.5"
+                <button
+                  type="button"
+                  className="absolute z-20 -translate-x-1/2 cursor-pointer border-0 bg-transparent p-0"
                   style={{
-                    backgroundColor: milestoneColor(m, todayYmd),
+                    left: `${pct}%`,
+                    top: "50%",
+                    transform: "translate(-50%, -50%) rotate(45deg)",
                   }}
-                  aria-hidden
-                />
-              </button>
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setMilestoneModal({
+                      mode: "edit",
+                      milestoneId: m.id,
+                      initial: {
+                        name: m.name,
+                        targetDate: m.targetDate,
+                        status: m.status,
+                      },
+                      onClose: () => setMilestoneModal(null),
+                      onSaved: () => void load(),
+                    });
+                  }}
+                >
+                  <span
+                    className="block h-2.5 w-2.5"
+                    style={{
+                      backgroundColor: milestoneColor(m, todayYmd),
+                    }}
+                    aria-hidden
+                  />
+                </button>
+              </TimelineTooltip>
             ))}
           </div>
         </div>
@@ -934,11 +1427,96 @@ export function ProjectPlanningView(): JSX.Element {
       }))
       .filter((x): x is { m: TimelineMilestoneDto; pct: number } => x.pct != null);
 
+    const rowTint = hexWithAlpha(
+      getProjectColor(proj.colorKey),
+      PROJECT_ROW_TINT_ALPHA,
+    );
+    const barOpenEditor = (): void => {
+      setEditPlannedPreset(null);
+      const fp = projects.find((p) => p.id === proj.id);
+      if (!fp) {
+        return;
+      }
+      const fs = fp.subProjects.find((s) => s.id === sub.id) ?? sub;
+      setEditSub(fs);
+      setEditSubProject(fp);
+    };
+    const openSubEditorWithPreset = (startYmd: string, endYmd: string): void => {
+      setEditPlannedPreset({ start: startYmd, end: endYmd });
+      const fp = projects.find((p) => p.id === proj.id);
+      if (!fp) {
+        return;
+      }
+      const fs = fp.subProjects.find((s) => s.id === sub.id) ?? sub;
+      setEditSub(fs);
+      setEditSubProject(fp);
+    };
+
+    let hoverPlaceholderLayout: ReturnType<typeof barLayoutForRange> = null;
+    if (
+      !layout &&
+      emptyDatesHover?.subId === sub.id &&
+      emptyDatesHover.col >= 0 &&
+      emptyDatesHover.col < nCols
+    ) {
+      const ms = columnMonthStartForSpan(
+        viewMode,
+        rangeStart,
+        emptyDatesHover.col,
+      );
+      const { startYmd, endYmd } = twoMonthSpanYmdsFromMonthStart(ms);
+      hoverPlaceholderLayout = barLayoutForRange(
+        startYmd,
+        endYmd,
+        rangeStart,
+        rangeEndInclusive,
+      );
+    }
+    const plannedTip = (
+      <div className="space-y-1">
+        <div className="font-medium text-text-primary">{sub.name}</div>
+        <div className="text-text-secondary">{subStatusLabel(sub.status)}</div>
+        {sub.plannedStart && sub.plannedEnd ? (
+          <div className="text-text-secondary">
+            Planned:{" "}
+            {formatFriendlyDayMonthUtc(parseYmdToUtcMidnight(sub.plannedStart))} –{" "}
+            {formatFriendlyDayMonthUtc(parseYmdToUtcMidnight(sub.plannedEnd))}
+          </div>
+        ) : null}
+        {sub.baselineStart && sub.baselineEnd ? (
+          <div className="text-text-secondary">
+            Baseline:{" "}
+            {formatFriendlyDayMonthUtc(parseYmdToUtcMidnight(sub.baselineStart))} –{" "}
+            {formatFriendlyDayMonthUtc(parseYmdToUtcMidnight(sub.baselineEnd))}
+          </div>
+        ) : null}
+        <div className="text-text-secondary">
+          Hours: {plannedH}h planned · {actualH.toFixed(1)}h logged
+        </div>
+        {plannedH > 0 ? (
+          <div className="text-text-secondary">
+            Progress vs plan: {Math.min(100, (actualH / plannedH) * 100).toFixed(0)}%
+          </div>
+        ) : null}
+      </div>
+    );
+
     return (
       <div
         key={`s-${sub.id}-${rowIdx}`}
         className="relative grid min-h-[44px] border-b border-border"
-        style={{ gridTemplateColumns: gridCols }}
+        style={{
+          gridTemplateColumns: gridCols,
+          backgroundColor: rowTint,
+        }}
+        onMouseLeave={
+          !layout
+            ? () =>
+                setEmptyDatesHover((h) =>
+                  h?.subId === sub.id ? null : h,
+                )
+            : undefined
+        }
       >
         <div
           className="pointer-events-none absolute inset-0 z-0 grid"
@@ -959,77 +1537,109 @@ export function ProjectPlanningView(): JSX.Element {
             />
           ) : null}
           {layout ? (
-            <button
-              type="button"
-              title={`Planned: ${plannedH}h | Logged: ${actualH.toFixed(1)}h`}
-              className={`absolute h-[22px] rounded-full ${baseCls} transition-opacity hover:opacity-90`}
-              style={{
-                left: `${layout.leftPct}%`,
-                width: `${layout.widthPct}%`,
-              }}
-              onClick={() => {
-                const fp = projects.find((p) => p.id === proj.id);
-                if (!fp) {
-                  return;
-                }
-                const fs = fp.subProjects.find((s) => s.id === sub.id) ?? sub;
-                setEditSub(fs);
-                setEditSubProject(fp);
-              }}
-            >
-              <span
-                className="pointer-events-none absolute inset-y-0 left-0 rounded-l-full bg-black/40"
-                style={{ width: `${overlayW}%` }}
-              />
-            </button>
+            <TimelineTooltip tip={plannedTip}>
+              <button
+                type="button"
+                className={`absolute h-[22px] rounded-full ${baseCls} transition-opacity hover:opacity-90`}
+                style={{
+                  left: `${layout.leftPct}%`,
+                  width: `${layout.widthPct}%`,
+                }}
+                onClick={barOpenEditor}
+              >
+                <span
+                  className="pointer-events-none absolute inset-y-0 left-0 rounded-l-full bg-black/40"
+                  style={{ width: `${overlayW}%` }}
+                />
+              </button>
+            </TimelineTooltip>
           ) : (
-            <button
-              type="button"
-              className="absolute left-0 text-xs text-text-secondary underline"
-              onClick={() => {
-                const fp = projects.find((p) => p.id === proj.id);
-                if (!fp) {
-                  return;
-                }
-                const fs = fp.subProjects.find((s) => s.id === sub.id) ?? sub;
-                setEditSub(fs);
-                setEditSubProject(fp);
-              }}
-            >
-              Set dates
-            </button>
+            <>
+              {hoverPlaceholderLayout ? (
+                <div
+                  className="pointer-events-none absolute top-1/2 h-[22px] -translate-y-1/2 rounded-full border border-dashed border-text-secondary/50 bg-text-secondary/[0.09]"
+                  style={{
+                    left: `${hoverPlaceholderLayout.leftPct}%`,
+                    width: `${hoverPlaceholderLayout.widthPct}%`,
+                  }}
+                />
+              ) : null}
+              <div
+                className="absolute inset-0 z-[5] grid"
+                style={{ gridTemplateColumns: gridCols }}
+              >
+                {Array.from({ length: nCols }, (_, i) => (
+                  <button
+                    key={`hit-${sub.id}-${i}`}
+                    type="button"
+                    aria-label="Set dates for this period"
+                    className="relative h-full min-h-[44px] w-full cursor-pointer border-0 bg-transparent p-0"
+                    onMouseEnter={() =>
+                      setEmptyDatesHover({ subId: sub.id, col: i })
+                    }
+                    onClick={() => {
+                      const ms = columnMonthStartForSpan(
+                        viewMode,
+                        rangeStart,
+                        i,
+                      );
+                      const { startYmd, endYmd } =
+                        twoMonthSpanYmdsFromMonthStart(ms);
+                      openSubEditorWithPreset(startYmd, endYmd);
+                    }}
+                  />
+                ))}
+              </div>
+            </>
           )}
           {subMs.map(({ m, pct }) => (
-            <button
+            <TimelineTooltip
               key={m.id}
-              type="button"
-              className="absolute z-20 -translate-x-1/2 cursor-pointer border-0 bg-transparent p-0"
-              style={{
-                left: `${pct}%`,
-                top: "50%",
-                transform: "translate(-50%, -50%) rotate(45deg)",
-              }}
-              title={`${m.name} · ${m.targetDate}`}
-              onClick={(e) => {
-                e.stopPropagation();
-                setMilestoneModal({
-                  mode: "edit",
-                  milestoneId: m.id,
-                  initial: {
-                    name: m.name,
-                    targetDate: m.targetDate,
-                    status: m.status,
-                  },
-                  onClose: () => setMilestoneModal(null),
-                  onSaved: () => void load(),
-                });
-              }}
+              tip={
+                <div className="space-y-1">
+                  <div className="font-medium">{m.name}</div>
+                  <div className="text-text-secondary">
+                    Target:{" "}
+                    {formatFriendlyDayMonthUtc(
+                      parseYmdToUtcMidnight(m.targetDate),
+                    )}{" "}
+                    ({m.targetDate})
+                  </div>
+                  <div className="text-text-secondary">
+                    {milestoneStatusTip(m, todayYmd)}
+                  </div>
+                </div>
+              }
             >
-              <span
-                className="block h-2.5 w-2.5"
-                style={{ backgroundColor: milestoneColor(m, todayYmd) }}
-              />
-            </button>
+              <button
+                type="button"
+                className="absolute z-20 -translate-x-1/2 cursor-pointer border-0 bg-transparent p-0"
+                style={{
+                  left: `${pct}%`,
+                  top: "50%",
+                  transform: "translate(-50%, -50%) rotate(45deg)",
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setMilestoneModal({
+                    mode: "edit",
+                    milestoneId: m.id,
+                    initial: {
+                      name: m.name,
+                      targetDate: m.targetDate,
+                      status: m.status,
+                    },
+                    onClose: () => setMilestoneModal(null),
+                    onSaved: () => void load(),
+                  });
+                }}
+              >
+                <span
+                  className="block h-2.5 w-2.5"
+                  style={{ backgroundColor: milestoneColor(m, todayYmd) }}
+                />
+              </button>
+            </TimelineTooltip>
           ))}
         </div>
       </div>
@@ -1037,10 +1647,115 @@ export function ProjectPlanningView(): JSX.Element {
   };
 
   if (loading) {
+    const gridCols = `repeat(${columnCount}, minmax(0, 1fr))`;
+    const skeletonRowCount = 8;
+
     return (
-      <p className="text-sm text-text-secondary" role="status">
-        Loading timeline…
-      </p>
+      <div
+        className="space-y-4"
+        role="status"
+        aria-busy="true"
+        aria-label="Loading timeline"
+      >
+        <div className="grid w-full grid-cols-1 items-center gap-3 md:grid-cols-[1fr_1fr_1fr]">
+          <div className="flex min-w-0 flex-wrap items-center justify-center gap-2 md:justify-start">
+            <Skeleton className="h-9 w-[8.5rem] shrink-0 rounded-input" />
+            <Skeleton className="h-10 min-w-[12rem] max-w-md flex-1 rounded-input" />
+          </div>
+          <div className="flex justify-center">
+            <Skeleton className="h-9 w-[11rem] rounded-input" />
+          </div>
+          <div className="flex justify-center gap-2 md:justify-end">
+            <Skeleton className="h-10 w-[7.5rem] rounded-input" />
+            <Skeleton className="h-10 w-[6.5rem] rounded-input" />
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <div className="flex min-w-[720px]">
+            <div className="sticky left-0 z-20 w-[260px] shrink-0 border border-border bg-surface">
+              <div className="border-b border-border py-3 pl-3 pr-2 text-[11px] font-medium uppercase tracking-wide text-text-secondary">
+                Project / Sub-project
+              </div>
+              {Array.from({ length: skeletonRowCount }, (_, i) => (
+                <div
+                  key={`sk-l-${i}`}
+                  className={`flex min-h-[44px] items-center gap-2 border-b border-border py-2 pl-1 pr-2 ${
+                    i % 3 === 0 ? "bg-white" : ""
+                  }`}
+                >
+                  {i % 3 === 0 ? (
+                    <>
+                      <Skeleton className="h-4 w-4 shrink-0 rounded-sm" />
+                      <Skeleton className="h-2.5 w-2.5 shrink-0 rounded-full" />
+                      <Skeleton className="h-4 min-w-0 flex-1 rounded-md" />
+                      <Skeleton className="h-3 w-12 shrink-0 rounded-md" />
+                    </>
+                  ) : (
+                    <>
+                      <span className="w-4 shrink-0" aria-hidden />
+                      <Skeleton className="h-4 min-w-0 flex-1 rounded-md" />
+                      <Skeleton className="h-3 w-14 shrink-0 rounded-md" />
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <div className="relative min-w-0 flex-1 border border-l-0 border-border bg-surface">
+              <div
+                className="relative z-10 grid h-11 shrink-0 items-center border-b border-border"
+                style={{ gridTemplateColumns: gridCols }}
+              >
+                {headers.map((h, hi) => (
+                  <div
+                    key={`sk-h-${hi}-${h}`}
+                    className="border-r border-border/50 px-1 text-center text-[11px] text-text-secondary"
+                  >
+                    {h}
+                  </div>
+                ))}
+              </div>
+              <div className="relative min-h-0">
+                {Array.from({ length: skeletonRowCount }, (_, i) => {
+                  const leftPct = 4 + (i * 11) % 48;
+                  const widthPct = 18 + (i % 4) * 12;
+                  return (
+                    <div
+                      key={`sk-t-${i}`}
+                      className={`relative grid min-h-[44px] border-b border-border ${
+                        i % 3 === 0 ? "bg-white" : ""
+                      }`}
+                      style={{ gridTemplateColumns: gridCols }}
+                    >
+                      <div
+                        className="pointer-events-none absolute inset-0 z-0 grid"
+                        style={{ gridTemplateColumns: gridCols }}
+                      >
+                        {Array.from({ length: columnCount }, (_, j) => (
+                          <div
+                            key={j}
+                            className="border-r border-border/50"
+                          />
+                        ))}
+                      </div>
+                      <div className="relative z-[2] col-span-full flex items-center px-0">
+                        <Skeleton
+                          className="absolute top-1/2 h-4 -translate-y-1/2 rounded-full"
+                          style={{
+                            left: `${leftPct}%`,
+                            width: `${widthPct}%`,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     );
   }
 
@@ -1052,82 +1767,181 @@ export function ProjectPlanningView(): JSX.Element {
     );
   }
 
+  const friendlyRangeLabel = formatInclusiveRangeLabel(
+    rangeStart,
+    rangeEndInclusive,
+  );
+
+  const openRangePicker = (): void => {
+    setPickRangeStart(formatYmd(rangeStart));
+    setRangeMenuOpen(true);
+  };
+
+  const applyRangePicker = (): void => {
+    try {
+      const d = parseYmdToUtcMidnight(pickRangeStart);
+      if (viewMode === "week") {
+        setOffsetWeeks(offsetWeeksForTimelineRangeStart(anchor, d));
+      } else {
+        setOffsetMonths(offsetMonthsForTimelineRangeStart(anchor, d));
+      }
+    } catch {
+      /* invalid date input */
+    }
+    setRangeMenuOpen(false);
+  };
+
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="inline-flex rounded-input bg-appbg p-0.5">
+      <div className="grid w-full grid-cols-1 items-center gap-3 md:grid-cols-[1fr_1fr_1fr]">
+        <div className="flex min-w-0 flex-wrap items-center justify-center gap-2 md:justify-start">
+          <div className="inline-flex shrink-0 rounded-input border border-border/80 bg-appbg/80 p-0.5">
+            <button
+              type="button"
+              onClick={() => setViewMode("week")}
+              className={`rounded-md px-3 py-1.5 text-sm font-medium transition-transform active:scale-95 ${
+                viewMode === "week"
+                  ? "border border-border bg-surface text-text-primary shadow-sm"
+                  : "text-text-secondary"
+              }`}
+            >
+              Week
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode("month")}
+              className={`rounded-md px-3 py-1.5 text-sm font-medium transition-transform active:scale-95 ${
+                viewMode === "month"
+                  ? "border border-border bg-surface text-text-primary shadow-sm"
+                  : "text-text-secondary"
+              }`}
+            >
+              Month
+            </button>
+          </div>
+          <input
+            type="search"
+            placeholder="Search projects…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="min-w-0 w-full max-w-md flex-1 rounded-input border border-border px-3 py-2 text-sm"
+          />
+        </div>
+        <div className="flex justify-center">
+          <div className="relative" ref={rangeMenuRef}>
+            <div className="inline-flex items-center gap-0.5 rounded-md border border-border bg-surface px-1 py-0.5 shadow-sm">
+              <button
+                type="button"
+                aria-label="Earlier range"
+                className="shrink-0 rounded border border-transparent px-1.5 py-0.5 text-sm hover:bg-appbg active:scale-95"
+                onClick={() =>
+                  viewMode === "week"
+                    ? setOffsetWeeks((o) => o - 1)
+                    : setOffsetMonths((o) => o - 1)
+                }
+              >
+                ←
+              </button>
+              <button
+                type="button"
+                className="max-w-[10rem] min-w-0 truncate px-1 py-0.5 text-center text-[11px] leading-tight text-text-secondary underline decoration-border decoration-dotted underline-offset-2 hover:text-text-primary"
+                onClick={openRangePicker}
+              >
+                {friendlyRangeLabel}
+              </button>
+              <button
+                type="button"
+                aria-label="Later range"
+                className="shrink-0 rounded border border-transparent px-1.5 py-0.5 text-sm hover:bg-appbg active:scale-95"
+                onClick={() =>
+                  viewMode === "week"
+                    ? setOffsetWeeks((o) => o + 1)
+                    : setOffsetMonths((o) => o + 1)
+                }
+              >
+                →
+              </button>
+            </div>
+            {rangeMenuOpen ? (
+              <div className="absolute left-1/2 top-full z-50 mt-2 w-[min(100vw-2rem,240px)] -translate-x-1/2 rounded-card border border-border bg-surface p-4 shadow-card">
+                <p className="mb-2 text-xs text-text-secondary">
+                  Jump to timeline window starting at:
+                </p>
+                <label className="block text-xs text-text-secondary">
+                  Start date
+                  <input
+                    type="date"
+                    value={pickRangeStart}
+                    onChange={(e) => setPickRangeStart(e.target.value)}
+                    className="mt-1 w-full rounded-input border border-border px-2 py-1.5 text-sm"
+                  />
+                </label>
+                <p className="mt-2 text-[11px] leading-snug text-text-secondary">
+                  Visible end (
+                  {viewMode === "week" ? "13 weeks" : "6 months"}
+                  ):{" "}
+                  <span className="font-medium text-text-primary">
+                    {pickRangeEnd
+                      ? formatFriendlyDayMonthUtc(
+                          parseYmdToUtcMidnight(pickRangeEnd),
+                        )
+                      : "—"}
+                  </span>
+                </p>
+                <div className="mt-3 flex justify-end gap-2">
+                  <button
+                    type="button"
+                    className="rounded-input border border-border px-3 py-1.5 text-sm"
+                    onClick={() => setRangeMenuOpen(false)}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-input bg-primary px-3 py-1.5 text-sm font-medium text-white"
+                    onClick={applyRangePicker}
+                  >
+                    Apply
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </div>
+        <div className="flex justify-center gap-2 md:justify-end">
           <button
             type="button"
-            onClick={() => setViewMode("week")}
-            className={`rounded-md px-3 py-1.5 text-sm font-medium transition-transform active:scale-95 ${
-              viewMode === "week"
-                ? "bg-primary text-white"
-                : "text-text-secondary"
-            }`}
+            disabled={projects.length === 0}
+            onClick={() =>
+              setMilestoneModal({
+                mode: "create",
+                projects,
+                initial: {
+                  name: "",
+                  targetDate: todayYmd,
+                },
+                onClose: () => setMilestoneModal(null),
+                onSaved: () => void load(),
+              })
+            }
+            className="rounded-input border border-border bg-surface px-4 py-2 text-sm font-medium text-text-primary active:scale-[0.97] disabled:opacity-50"
           >
-            Week
+            + Milestone
           </button>
           <button
             type="button"
-            onClick={() => setViewMode("month")}
-            className={`rounded-md px-3 py-1.5 text-sm font-medium transition-transform active:scale-95 ${
-              viewMode === "month"
-                ? "bg-primary text-white"
-                : "text-text-secondary"
-            }`}
+            onClick={() => setNewProjectOpen(true)}
+            className="rounded-input bg-primary px-4 py-2 text-sm font-medium text-white active:scale-[0.97]"
           >
-            Month
+            + Project
           </button>
         </div>
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            aria-label="Earlier range"
-            className="rounded-input border border-border bg-surface px-2 py-1 text-sm active:scale-95"
-            onClick={() =>
-              viewMode === "week"
-                ? setOffsetWeeks((o) => o - 1)
-                : setOffsetMonths((o) => o - 1)
-            }
-          >
-            ←
-          </button>
-          <span className="min-w-[140px] text-center text-xs text-text-secondary">
-            {formatYmd(rangeStart)} — {formatYmd(rangeEndInclusive)}
-          </span>
-          <button
-            type="button"
-            aria-label="Later range"
-            className="rounded-input border border-border bg-surface px-2 py-1 text-sm active:scale-95"
-            onClick={() =>
-              viewMode === "week"
-                ? setOffsetWeeks((o) => o + 1)
-                : setOffsetMonths((o) => o + 1)
-            }
-          >
-            →
-          </button>
-        </div>
-        <input
-          type="search"
-          placeholder="Search projects…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="min-w-[180px] flex-1 rounded-input border border-border px-3 py-2 text-sm"
-        />
-        <button
-          type="button"
-          onClick={() => setNewProjectOpen(true)}
-          className="rounded-input bg-primary px-4 py-2 text-sm font-medium text-white active:scale-[0.97]"
-        >
-          + New project
-        </button>
       </div>
 
       <div className="overflow-x-auto">
         <div className="flex min-w-[720px]">
           <div className="sticky left-0 z-20 w-[260px] shrink-0 border border-border bg-surface">
-            <div className="border-b border-border py-3 pl-1 pr-2 text-[11px] font-medium uppercase tracking-wide text-text-secondary">
+            <div className="border-b border-border py-3 pl-3 pr-2 text-[11px] font-medium uppercase tracking-wide text-text-secondary">
               Project / Sub-project
             </div>
             {rows.map((row, rowIdx) => (
@@ -1137,7 +1951,19 @@ export function ProjectPlanningView(): JSX.Element {
                     ? `l-p-${row.project.id}-${rowIdx}`
                     : `l-s-${row.sub.id}-${rowIdx}`
                 }
-                className="flex min-h-[44px] items-center gap-2 border-b border-border py-2 pl-1 pr-2"
+                className={`flex min-h-[44px] items-center gap-2 border-b border-border py-2 pl-1 pr-2 ${
+                  row.kind === "project" ? "bg-white" : ""
+                }`}
+                style={
+                  row.kind === "sub"
+                    ? {
+                        backgroundColor: hexWithAlpha(
+                          getProjectColor(row.project.colorKey),
+                          PROJECT_ROW_TINT_ALPHA,
+                        ),
+                      }
+                    : undefined
+                }
               >
                 {row.kind === "project" ? (
                   <>
@@ -1145,62 +1971,42 @@ export function ProjectPlanningView(): JSX.Element {
                       type="button"
                       aria-expanded={expanded.has(row.project.id)}
                       className="shrink-0 text-text-secondary"
-                      onClick={() => toggleProject(row.project.id)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleProject(row.project.id);
+                      }}
                     >
                       {expanded.has(row.project.id) ? "▼" : "▶"}
                     </button>
-                    <AlertDot
-                      kind={projectAlert(row.project.subProjects, todayYmd)}
+                    <span
+                      className="h-2.5 w-2.5 shrink-0 rounded-full border border-black/10 shadow-sm"
+                      style={{
+                        backgroundColor: getProjectColor(row.project.colorKey),
+                      }}
+                      aria-hidden
                     />
-                    <span className="min-w-0 flex-1 truncate text-sm font-medium text-text-primary">
-                      {row.project.name}
-                    </span>
                     <button
                       type="button"
-                      className="shrink-0 text-[11px] text-accent underline"
-                      onClick={() =>
-                        setMilestoneModal({
-                          mode: "create",
-                          initial: {
-                            projectId: row.project.id,
-                            subProjectId: null,
-                            targetDate: todayYmd,
-                            name: "",
-                          },
-                          onClose: () => setMilestoneModal(null),
-                          onSaved: () => void load(),
-                        })
-                      }
+                      className="min-w-0 flex-1 truncate text-left text-sm font-medium text-text-primary hover:underline"
+                      onClick={() => setEditProject(row.project)}
                     >
-                      + Milestone
+                      {row.project.name}
                     </button>
+                    <span className="max-w-[6rem] shrink-0 truncate text-end text-[10px] font-medium uppercase tracking-wide text-text-secondary">
+                      {projectAlertLabel(
+                        projectAlert(row.project.subProjects, todayYmd),
+                      ).toUpperCase()}
+                    </span>
                   </>
                 ) : (
                   <>
-                    <span className="w-4 shrink-0" />
-                    <AlertDot kind={rowAlert(row.sub, todayYmd)} />
+                    <span className="w-4 shrink-0" aria-hidden />
                     <span className="min-w-0 flex-1 truncate text-sm text-text-primary">
-                      └ {row.sub.name}
+                      {displaySubProjectName(row.project.name, row.sub.name)}
                     </span>
-                    <button
-                      type="button"
-                      className="shrink-0 text-[11px] text-accent underline"
-                      onClick={() =>
-                        setMilestoneModal({
-                          mode: "create",
-                          initial: {
-                            projectId: null,
-                            subProjectId: row.sub.id,
-                            targetDate: row.sub.plannedEnd ?? todayYmd,
-                            name: "",
-                          },
-                          onClose: () => setMilestoneModal(null),
-                          onSaved: () => void load(),
-                        })
-                      }
-                    >
-                      + Milestone
-                    </button>
+                    <span className="max-w-[6rem] shrink-0 truncate text-end text-[10px] font-medium uppercase tracking-wide text-text-secondary">
+                      {subStatusLabel(row.sub.status).toUpperCase()}
+                    </span>
                   </>
                 )}
               </div>
@@ -1214,9 +2020,9 @@ export function ProjectPlanningView(): JSX.Element {
                 gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))`,
               }}
             >
-              {headers.map((h) => (
+              {headers.map((h, hi) => (
                 <div
-                  key={h}
+                  key={`h-${hi}-${h}`}
                   className="border-r border-border/50 px-1 text-center text-[11px] text-text-secondary"
                 >
                   {h}
@@ -1248,9 +2054,12 @@ export function ProjectPlanningView(): JSX.Element {
         <SubProjectEditModal
           sub={editSub}
           siblings={editSubProject.subProjects}
+          initialPlannedStart={editPlannedPreset?.start}
+          initialPlannedEnd={editPlannedPreset?.end}
           onClose={() => {
             setEditSub(null);
             setEditSubProject(null);
+            setEditPlannedPreset(null);
           }}
           onSaved={() => void load()}
         />
@@ -1258,8 +2067,17 @@ export function ProjectPlanningView(): JSX.Element {
 
       {milestoneModal ? <MilestoneModal {...milestoneModal} /> : null}
 
+      {editProject ? (
+        <EditProjectModal
+          project={editProject}
+          onClose={() => setEditProject(null)}
+          onSaved={() => void load()}
+        />
+      ) : null}
+
       {newProjectOpen ? (
         <NewProjectModal
+          usedColorKeys={projects.map((p) => p.colorKey)}
           onClose={() => setNewProjectOpen(false)}
           onCreated={() => void load()}
         />
