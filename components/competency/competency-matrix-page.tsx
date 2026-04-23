@@ -474,6 +474,27 @@ function skeletonDeptIndexForColumn(colIdx: number): number {
   return Math.max(0, SKELETON_DEPT_COL_SPANS.length - 1);
 }
 
+/** Matches `MetricStatCard` grid (4 cols) to avoid layout shift when KPIs load. */
+function CompetencyKpisSkeleton(): JSX.Element {
+  return (
+    <div
+      className="grid gap-4 md:grid-cols-2 lg:grid-cols-4"
+      aria-hidden
+    >
+      {Array.from({ length: 4 }, (_, i) => (
+        <div
+          key={i}
+          className="min-h-[108px] rounded-lg border border-border bg-surface py-4 pl-5 pr-5 shadow-card border-l-[3px] border-l-border/60"
+        >
+          <Skeleton className="h-3 w-full max-w-[min(100%,220px)]" />
+          <Skeleton className="mt-1.5 h-3 w-[80%] max-w-[200px]" />
+          <Skeleton className="mt-2 h-8 w-14" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function CompetencyMatrixTableSkeleton(): JSX.Element {
   const nameColStyle = {
     width: EMPLOYEE_NAME_COL_WIDTH,
@@ -900,6 +921,11 @@ export function CompetencyMatrixPage(): JSX.Element {
             borderAccent={kpis.expiringSoon > 0 ? "accent" : "primary"}
           />
         </div>
+      ) : !loadError ? (
+        <>
+          <span className="sr-only">Loading competency metrics</span>
+          <CompetencyKpisSkeleton />
+        </>
       ) : null}
 
       {loadError ? (
