@@ -78,6 +78,21 @@ function rowMatchesFilter(
   );
 }
 
+function sortMatrixRows(
+  a: ShiftBoardResponseDto["rows"][0],
+  b: ShiftBoardResponseDto["rows"][0],
+): number {
+  const d = a.departmentName.localeCompare(b.departmentName, undefined, {
+    sensitivity: "base",
+  });
+  if (d !== 0) {
+    return d;
+  }
+  return a.activityName.localeCompare(b.activityName, undefined, {
+    sensitivity: "base",
+  });
+}
+
 type Col = ShiftBoardResponseDto["cols"][0];
 
 type MatrixProjectCellProps = {
@@ -285,7 +300,10 @@ export function ShiftBoardMatrix({
   );
 
   const filteredRows = useMemo(
-    () => board.rows.filter((r) => rowMatchesFilter(search, r)),
+    () =>
+      board.rows
+        .filter((r) => rowMatchesFilter(search, r))
+        .sort(sortMatrixRows),
     [board.rows, search],
   );
 

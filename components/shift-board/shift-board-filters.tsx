@@ -8,8 +8,8 @@ import { SegmentedToggle } from "@/components/dashboard/segmented-toggle";
 import { localYmd } from "@/lib/shift-board-date";
 
 const SEARCH_PLACEHOLDER: Record<"matrix" | "person", string> = {
-  matrix: "Search department or activity…",
-  person: "Search employee or department…",
+  matrix: "Search Department or Activity",
+  person: "Search Department or Employee",
 };
 
 function addDaysToYmd(ymd: string, deltaDays: number): string {

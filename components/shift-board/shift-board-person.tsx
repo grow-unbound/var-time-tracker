@@ -80,6 +80,25 @@ function nameMatches(
   );
 }
 
+function sortPersonEmployees(
+  a: ShiftBoardPersonResponseDto["employees"][0],
+  b: ShiftBoardPersonResponseDto["employees"][0],
+): number {
+  const d = a.departmentName.localeCompare(b.departmentName, undefined, {
+    sensitivity: "base",
+  });
+  if (d !== 0) {
+    return d;
+  }
+  const f = a.firstName.localeCompare(b.firstName, undefined, {
+    sensitivity: "base",
+  });
+  if (f !== 0) {
+    return f;
+  }
+  return a.lastName.localeCompare(b.lastName, undefined, { sensitivity: "base" });
+}
+
 function createCellPayload(
   e: ShiftBoardPersonResponseDto["employees"][0],
   col: { projectId: number; projectName: string },
@@ -299,7 +318,10 @@ export function ShiftBoardPerson({
   }, []);
 
   const filtered = useMemo(
-    () => data.employees.filter((e) => nameMatches(search, e)),
+    () =>
+      data.employees
+        .filter((e) => nameMatches(search, e))
+        .sort(sortPersonEmployees),
     [data.employees, search],
   );
 
