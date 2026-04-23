@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
 
 interface NavItem {
@@ -167,17 +167,6 @@ function getTodayDisplay(): {
     day: part("day"),
     month: part("month"),
   };
-}
-
-type TodayDisplay = ReturnType<typeof getTodayDisplay>;
-
-/** Avoid hydration mismatches: server and browser timezones can differ. */
-function useClientTodayDisplay(): TodayDisplay | null {
-  const [value, setValue] = useState<TodayDisplay | null>(null);
-  useEffect(() => {
-    setValue(getTodayDisplay());
-  }, []);
-  return value;
 }
 
 interface SidebarBrandProps {
@@ -364,7 +353,7 @@ function SidebarDateFooter(
 /** In-flow rail: main content width follows sidebar (tablet hover expand). */
 export function SidebarRail(): JSX.Element {
   const pathname = usePathname();
-  const today = useClientTodayDisplay();
+  const { todayLabel, weekday, day, month } = getTodayDisplay();
 
   return (
     <aside
@@ -381,10 +370,10 @@ export function SidebarRail(): JSX.Element {
         <SidebarNav pathname={pathname} variant="rail" />
         <SidebarDateFooter
           variant="rail"
-          todayLabel={today?.todayLabel ?? "—"}
-          weekday={today?.weekday ?? "—"}
-          day={today?.day ?? "—"}
-          month={today?.month ?? "—"}
+          todayLabel={todayLabel}
+          weekday={weekday}
+          day={day}
+          month={month}
         />
       </div>
     </aside>
@@ -404,7 +393,7 @@ export function SidebarMobileDrawer({
   const pathname = usePathname();
   const openRef = useRef(open);
   openRef.current = open;
-  const today = useClientTodayDisplay();
+  const { todayLabel } = getTodayDisplay();
 
   useEffect(() => {
     if (!open) {
@@ -448,10 +437,7 @@ export function SidebarMobileDrawer({
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
           <SidebarBrand variant="drawer" />
           <SidebarNav pathname={pathname} variant="drawer" />
-          <SidebarDateFooter
-            variant="drawer"
-            todayLabel={today?.todayLabel ?? "—"}
-          />
+          <SidebarDateFooter variant="drawer" todayLabel={todayLabel} />
         </div>
       </aside>
     </>
