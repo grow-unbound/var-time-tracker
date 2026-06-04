@@ -180,8 +180,30 @@ function useClientTodayDisplay(): TodayDisplay | null {
   return value;
 }
 
+/** Neutral demo branding — swap for client wordmark in production. */
+const DEMO_WORDMARK = {
+  name: "Ops Planner",
+  short: "OP",
+  tagline: "Labor time tracker",
+} as const;
+
 interface SidebarBrandProps {
   variant: "rail" | "drawer";
+}
+
+function SidebarWordmark({ showTagline }: { showTagline: boolean }): JSX.Element {
+  return (
+    <span className="flex min-w-0 flex-col gap-0.5 text-white">
+      <span className="truncate text-base font-semibold leading-tight tracking-tight">
+        {DEMO_WORDMARK.name}
+      </span>
+      {showTagline ? (
+        <span className="truncate text-[11px] font-medium leading-tight text-sidebar">
+          {DEMO_WORDMARK.tagline}
+        </span>
+      ) : null}
+    </span>
+  );
 }
 
 function SidebarBrand({ variant }: SidebarBrandProps): JSX.Element {
@@ -210,43 +232,48 @@ function SidebarBrand({ variant }: SidebarBrandProps): JSX.Element {
             ? "md:mx-auto md:group-hover:mx-0 lg:mx-0"
             : "",
         ].join(" ")}
-        aria-label="VAR Electrochem — home"
+        aria-label={`${DEMO_WORDMARK.name} — home`}
       >
         <div
           className={
             isRail
               ? [
-                  "flex w-full max-w-[180px] justify-center overflow-hidden",
+                  "flex w-full min-w-0 max-w-[180px] justify-center",
                   "md:max-w-[48px]",
                   "md:group-hover:max-w-[180px] md:group-focus-within:max-w-[180px]",
                   "lg:max-w-[180px] lg:justify-start",
                 ].join(" ")
-              : "max-w-[180px]"
+              : "min-w-0 max-w-[180px]"
           }
         >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="/branding/var-logo.svg"
-            alt=""
-            width={180}
-            height={40}
-            className="h-9 w-auto object-contain object-left"
-          />
+          {isRail ? (
+            <>
+              <span
+                aria-hidden="true"
+                className={[
+                  "text-sm font-bold tracking-tight text-white",
+                  "md:mx-auto",
+                  "md:group-hover:hidden md:group-focus-within:hidden",
+                  "lg:hidden",
+                ].join(" ")}
+              >
+                {DEMO_WORDMARK.short}
+              </span>
+              <span
+                className={[
+                  "hidden min-w-0",
+                  "md:group-hover:block md:group-focus-within:block",
+                  "lg:block",
+                ].join(" ")}
+              >
+                <SidebarWordmark showTagline />
+              </span>
+            </>
+          ) : (
+            <SidebarWordmark showTagline />
+          )}
         </div>
       </Link>
-      {/* <p
-        className={[
-          "mt-2 text-xs font-medium leading-snug text-sidebar",
-          isRail
-            ? [
-                "hidden text-left lg:block",
-                "md:group-hover:block md:group-focus-within:block",
-              ].join(" ")
-            : "text-left",
-        ].join(" ")}
-      >
-        Labor Time Tracker
-      </p> */}
     </div>
   );
 }
